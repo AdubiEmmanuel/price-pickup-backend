@@ -1,6 +1,11 @@
 from django.db import models
 
 class CompetitorPrice(models.Model):
+    SOURCE_CHOICES = [
+        ('CSV', 'Imported from CSV'),
+        ('FORM', 'Created from form'),
+    ]
+    
     SKU_CATEGORY_CHOICES = [
         ('CASE', 'CASE'),
         ('DEOS', 'DEOS'),
@@ -25,7 +30,9 @@ class CompetitorPrice(models.Model):
 
     sku_name = models.CharField(
         max_length=255,
-        verbose_name='SKU Name'
+        verbose_name='SKU Name',
+        null=True,
+        blank=True
     )
     
     sku_description = models.TextField(
@@ -68,11 +75,20 @@ class CompetitorPrice(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    source = models.CharField(
+        max_length=10,
+        choices=SOURCE_CHOICES,
+        default='FORM',
+        verbose_name='Data Source'
+    )
+
     def __str__(self):
         return f"{self.sku_name} - {self.sku_category}"
 
     class Meta:
         ordering = ['-created_at']
+
+
 
 
 

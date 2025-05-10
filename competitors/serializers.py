@@ -13,17 +13,17 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
             'market_type',
             'selling_price_case',
             'selling_price_unit',
+            'source',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at', 'source']
 
     def validate(self, data):
         """
         Custom validation to ensure data consistency
         """
         required_fields = [
-            'sku_name',
             'sku_category',
             'sku_size_category',
             'market_type',
@@ -37,26 +37,41 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
         
         return data
 
-    def create(self, validated_data):
-        return CompetitorPrice.objects.create(**validated_data)
-
     def update(self, instance, validated_data):
+        """
+        Update and return an existing CompetitorPrice instance,
+        or create a new one if the source is CSV
+        """
+        # If the record is from CSV, create a new record instead of updating
+        if instance.source == 'CSV':
+            # Create a new record with the same data as the CSV record
+            # but mark it as coming from the form
+            new_instance = CompetitorPrice.objects.create(
+                sku_name=validated_data.get('sku_name', instance.sku_name),
+                sku_description=validated_data.get('sku_description', instance.sku_description),
+                sku_category=validated_data.get('sku_category', instance.sku_category),
+                sku_size_category=validated_data.get('sku_size_category', instance.sku_size_category),
+                market_type=validated_data.get('market_type', instance.market_type),
+                selling_price_case=validated_data.get('selling_price_case', instance.selling_price_case),
+                selling_price_unit=validated_data.get('selling_price_unit', instance.selling_price_unit),
+                source='FORM'  # Mark as created from form
+            )
+            return new_instance
+        
+        # For records created from the form, update normally
+        instance.sku_name = validated_data.get('sku_name', instance.sku_name)
+        instance.sku_description = validated_data.get('sku_description', instance.sku_description)
         instance.sku_category = validated_data.get('sku_category', instance.sku_category)
         instance.sku_size_category = validated_data.get('sku_size_category', instance.sku_size_category)
-        instance.gram_unit = validated_data.get('gram_unit', instance.gram_unit)
-        instance.unit_pack = validated_data.get('unit_pack', instance.unit_pack)
-        instance.gram_pack = validated_data.get('gram_pack', instance.gram_pack)
-        instance.pack_case = validated_data.get('pack_case', instance.pack_case)
-        instance.kd_case_price = validated_data.get('kd_case_price', instance.kd_case_price)
-        instance.kd_unit_price = validated_data.get('kd_unit_price', instance.kd_unit_price)
-        instance.kd_price_gram = validated_data.get('kd_price_gram', instance.kd_price_gram)
+        instance.market_type = validated_data.get('market_type', instance.market_type)
         instance.selling_price_case = validated_data.get('selling_price_case', instance.selling_price_case)
-        instance.open_market_pack_price = validated_data.get('open_market_pack_price', instance.open_market_pack_price)
-        instance.ng_pack_price = validated_data.get('ng_pack_price', instance.ng_pack_price)
-        instance.small_supermarket_pack_price = validated_data.get('small_supermarket_pack_price', instance.small_supermarket_pack_price)
+        instance.selling_price_unit = validated_data.get('selling_price_unit', instance.selling_price_unit)
         
         instance.save()
         return instance
+
+
+
 
 
 

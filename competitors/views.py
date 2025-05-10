@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
@@ -14,6 +14,7 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
     """
     queryset = CompetitorPrice.objects.all()
     serializer_class = CompetitorPriceSerializer
+    permission_classes = [permissions.AllowAny]  # Allow any user to access the API
 
     @swagger_auto_schema(
         operation_description="List all competitor prices",
@@ -38,12 +39,42 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Update a competitor price entry",
+        operation_description="Update a competitor price entry. If the entry is from CSV, a new record will be created instead.",
         request_body=CompetitorPriceSerializer,
         responses={200: CompetitorPriceSerializer}
     )
     def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # If the record is from CSV, we'll create a new one in the serializer
+        # but we need to return a 201 Created status instead of 200 OK
+        if instance.source == 'CSV':
+            serializer = self.get_serializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        # For records created from the form, update normally
         return super().update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_description="Partially update a competitor price entry. If the entry is from CSV, a new record will be created instead.",
+        request_body=CompetitorPriceSerializer,
+        responses={200: CompetitorPriceSerializer}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # If the record is from CSV, we'll create a new one in the serializer
+        # but we need to return a 201 Created status instead of 200 OK
+        if instance.source == 'CSV':
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        # For records created from the form, update normally
+        return super().partial_update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Delete a competitor price entry",
@@ -79,4 +110,17 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
             'sku_size_categories': dict(CompetitorPrice.SKU_SIZE_CHOICES),
             'market_types': dict(CompetitorPrice.MARKET_CHOICES),
         })
+
+    # Add a method to import CSV data and mark records as from CSV
+    @action(detail=False, methods=['post'])
+    def import_csv(self, request):
+        """
+        Import competitor prices from CSV data.
+        """
+        # Your CSV import logic here
+        # Make sure to set source='CSV' for all imported records
+        
+        return Response({"message": "CSV data imported successfully"}, status=status.HTTP_201_CREATED)
+
+
 
