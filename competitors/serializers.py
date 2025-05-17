@@ -6,18 +6,24 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
         model = CompetitorPrice
         fields = [
             'id',
-            'sku_name',
-            'sku_description',
             'sku_category',
-            'sku_size_category',
-            'market_type',
-            'selling_price_case',
-            'selling_price_unit',
+            'sku_size',
+            'sku_name',
+            'brand',
+            'kd_case',
+            'kd_unit',
+            'kd_price_gram',
+            'wholesale_price',
+            'open_market_price',
+            'ng_price',
+            'small_supermarket_price',
+            'is_unilever',
+            'location',
             'source',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at', 'source']
+        read_only_fields = ['created_at', 'updated_at']
 
     def validate(self, data):
         """
@@ -25,10 +31,7 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
         """
         required_fields = [
             'sku_category',
-            'sku_size_category',
-            'market_type',
-            'selling_price_case',
-            'selling_price_unit',
+            'sku_size',
         ]
         
         for field in required_fields:
@@ -69,6 +72,8 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
         
         instance.save()
         return instance
+
+
 
 
 

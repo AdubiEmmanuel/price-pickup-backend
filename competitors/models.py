@@ -13,6 +13,7 @@ class CompetitorPrice(models.Model):
         ('ORALS', 'ORALS'),
         ('SKIN CARE', 'SKIN CARE'),
         ('SALVORY', 'SALVORY'),
+        ('DEODORANT', 'DEODORANT'),
     ]
 
     SKU_SIZE_CHOICES = [
@@ -20,14 +21,34 @@ class CompetitorPrice(models.Model):
         ('MID PACK', 'MID PACK'),
         ('REGULAR PACK', 'REGULAR PACK'),
         ('SMALL PACK', 'SMALL PACK'),
+        ('POWERS', 'POWERS'),
+        ('Bulk Pack', 'Bulk Pack'),
+        ('Mid Pack', 'Mid Pack'),
+        ('Powders', 'Powders'),
     ]
 
     MARKET_CHOICES = [
         ('OPEN_MARKET', 'Open Market'),
         ('NG', 'NG Market'),
         ('SMALL_SUPERMARKET', 'Small Supermarket'),
+        ('WHOLESALE', 'Wholesale'),
     ]
 
+    # Basic SKU information
+    sku_category = models.CharField(
+        max_length=255,
+        verbose_name='SKU Category',
+        null=True,
+        blank=True
+    )
+    
+    sku_size = models.CharField(
+        max_length=255,
+        verbose_name='SKU Size',
+        null=True,
+        blank=True
+    )
+    
     sku_name = models.CharField(
         max_length=255,
         verbose_name='SKU Name',
@@ -35,41 +56,82 @@ class CompetitorPrice(models.Model):
         blank=True
     )
     
-    sku_description = models.TextField(
-        verbose_name='SKU Description',
+    brand = models.CharField(
+        max_length=255,
+        verbose_name='Brand',
         blank=True,
         null=True
     )
     
-    sku_category = models.CharField(
-        max_length=255,
-        choices=SKU_CATEGORY_CHOICES,
-        verbose_name='SKU Category'
+    # Price information
+    kd_case = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='KD Case',
+        null=True,
+        blank=True
     )
     
-    sku_size_category = models.CharField(
+    kd_unit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='KD Unit',
+        null=True,
+        blank=True
+    )
+    
+    kd_price_gram = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='KD Price/Gram',
+        null=True,
+        blank=True
+    )
+    
+    # Market prices
+    wholesale_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='Wholesale Price',
+        null=True,
+        blank=True
+    )
+    
+    open_market_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='Open Market Price',
+        null=True,
+        blank=True
+    )
+    
+    ng_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='NG Price',
+        null=True,
+        blank=True
+    )
+    
+    small_supermarket_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name='Small Supermarket Price',
+        null=True,
+        blank=True
+    )
+    
+    # Additional fields
+    is_unilever = models.BooleanField(
+        default=False,
+        verbose_name='Is Unilever Product'
+    )
+    
+    location = models.CharField(
         max_length=255,
-        choices=SKU_SIZE_CHOICES,
-        verbose_name='SKU Size Category'
-    )
-
-    market_type = models.CharField(
-        max_length=50,
-        choices=MARKET_CHOICES,
-        verbose_name='Market Type'
-    )
-
-    selling_price_case = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2,
-        verbose_name='Selling Price (Case)'
-    )
-
-    selling_price_unit = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2,
-        verbose_name='Selling Price (Unit)',
-        default=0.00  # Added default value
+        verbose_name='Location',
+        blank=True,
+        null=True
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -83,10 +145,13 @@ class CompetitorPrice(models.Model):
     )
 
     def __str__(self):
-        return f"{self.sku_name} - {self.sku_category}"
+        return f"{self.sku_name or ''} - {self.sku_category or ''}"
 
     class Meta:
         ordering = ['-created_at']
+
+
+
 
 
 

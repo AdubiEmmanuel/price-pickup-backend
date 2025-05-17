@@ -1,105 +1,21 @@
-from rest_framework import viewsets, status, permissions
+import csv
+import io
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import CompetitorPrice
 from .serializers import CompetitorPriceSerializer
 
 class CompetitorPriceViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for managing competitor prices.
-    
-    Provides CRUD operations for competitor price data.
-    """
     queryset = CompetitorPrice.objects.all()
     serializer_class = CompetitorPriceSerializer
-    permission_classes = [permissions.AllowAny]  # Allow any user to access the API
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['sku_category', 'sku_size', 'brand', 'is_unilever', 'location']
+    search_fields = ['sku_name', 'brand']
+    ordering_fields = ['created_at', 'sku_name', 'kd_case', 'kd_unit']
 
-    @swagger_auto_schema(
-        operation_description="List all competitor prices",
-        responses={200: CompetitorPriceSerializer(many=True)}
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Create a new competitor price entry",
-        request_body=CompetitorPriceSerializer,
-        responses={201: CompetitorPriceSerializer}
-    )
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Retrieve a specific competitor price entry",
-        responses={200: CompetitorPriceSerializer}
-    )
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Update a competitor price entry. If the entry is from CSV, a new record will be created instead.",
-        request_body=CompetitorPriceSerializer,
-        responses={200: CompetitorPriceSerializer}
-    )
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        
-        # If the record is from CSV, we'll create a new one in the serializer
-        # but we need to return a 201 Created status instead of 200 OK
-        if instance.source == 'CSV':
-            serializer = self.get_serializer(instance, data=request.data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        # For records created from the form, update normally
-        return super().update(request, *args, **kwargs)
-    
-    @swagger_auto_schema(
-        operation_description="Partially update a competitor price entry. If the entry is from CSV, a new record will be created instead.",
-        request_body=CompetitorPriceSerializer,
-        responses={200: CompetitorPriceSerializer}
-    )
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        
-        # If the record is from CSV, we'll create a new one in the serializer
-        # but we need to return a 201 Created status instead of 200 OK
-        if instance.source == 'CSV':
-            serializer = self.get_serializer(instance, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        # For records created from the form, update normally
-        return super().partial_update(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Delete a competitor price entry",
-        responses={204: "No content"}
-    )
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        method='get',
-        operation_description="Get available category choices",
-        responses={
-            200: openapi.Response(
-                description="Category choices",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'sku_categories': openapi.Schema(type=openapi.TYPE_OBJECT),
-                        'sku_size_categories': openapi.Schema(type=openapi.TYPE_OBJECT),
-                        'market_types': openapi.Schema(type=openapi.TYPE_OBJECT),
-                    }
-                )
-            )
-        }
-    )
     @action(detail=False, methods=['get'])
     def get_category_choices(self, request):
         """
@@ -107,20 +23,179 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         """
         return Response({
             'sku_categories': dict(CompetitorPrice.SKU_CATEGORY_CHOICES),
-            'sku_size_categories': dict(CompetitorPrice.SKU_SIZE_CHOICES),
+            'sku_sizes': dict(CompetitorPrice.SKU_SIZE_CHOICES),
             'market_types': dict(CompetitorPrice.MARKET_CHOICES),
         })
 
-    # Add a method to import CSV data and mark records as from CSV
     @action(detail=False, methods=['post'])
-    def import_csv(self, request):
+    def upload(self, request):
         """
-        Import competitor prices from CSV data.
+        Upload and process CSV/Excel files
         """
-        # Your CSV import logic here
-        # Make sure to set source='CSV' for all imported records
+        if 'file' not in request.FILES:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
         
-        return Response({"message": "CSV data imported successfully"}, status=status.HTTP_201_CREATED)
+        file = request.FILES['file']
+        
+        # Check file extension
+        if not (file.name.endswith('.csv') or file.name.endswith('.xlsx')):
+            return Response({"error": "File must be CSV or Excel format"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Process CSV file
+        if file.name.endswith('.csv'):
+            try:
+                decoded_file = file.read().decode('utf-8')
+                io_string = io.StringIO(decoded_file)
+                reader = csv.DictReader(io_string)
+                
+                # Map CSV headers to model fields
+                field_mapping = {
+                    'SKU Category': 'sku_category',
+                    'SKU Size': 'sku_size',
+                    'SKU Name/Brand': 'sku_name_brand',  # We'll split this later
+                    'KD Case': 'kd_case',
+                    'KD Unit': 'kd_unit',
+                    'KD Price/Gram': 'kd_price_gram',
+                    'Wholesales price': 'wholesale_price',
+                    'Open Market Price': 'open_market_price',
+                    'NG Price': 'ng_price',
+                    'Small Supermarket Price': 'small_supermarket_price',
+                }
+                
+                # Validate headers
+                headers = reader.fieldnames
+                if not headers or 'SKU Category' not in headers:
+                    return Response({"error": "CSV format is invalid - SKU Category not found"}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+                
+                # Process rows
+                created_count = 0
+                error_rows = []
+                
+                for row_num, row in enumerate(reader, start=2):  # Start at 2 to account for header row
+                    try:
+                        data = {}
+                        for csv_field, model_field in field_mapping.items():
+                            if csv_field in row:
+                                value = row[csv_field].strip()
+                                
+                                # Handle the SKU Name/Brand field - split into name and brand
+                                if model_field == 'sku_name_brand' and value:
+                                    parts = value.split()
+                                    if len(parts) > 1:
+                                        # Last part is the brand
+                                        data['brand'] = parts[-1]
+                                        # Rest is the SKU name
+                                        data['sku_name'] = ' '.join(parts[:-1])
+                                    else:
+                                        data['sku_name'] = value
+                                        data['brand'] = ''
+                                # Handle numeric fields
+                                elif model_field in ('kd_case', 'kd_unit', 'kd_price_gram', 
+                                                    'wholesale_price', 'open_market_price', 
+                                                    'ng_price', 'small_supermarket_price'):
+                                    if value:
+                                        try:
+                                            data[model_field] = float(value.replace(',', ''))
+                                        except ValueError:
+                                            # Skip invalid numeric values
+                                            pass
+                                else:
+                                    data[model_field] = value
+                        
+                        # Set source to CSV
+                        data['source'] = 'CSV'
+                        
+                        # Determine if it's a Unilever product (you may need to adjust this logic)
+                        data['is_unilever'] = 'Example' in data.get('sku_name', '')
+                        
+                        # Create the record
+                        serializer = self.get_serializer(data=data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            created_count += 1
+                        else:
+                            error_rows.append({
+                                'row': row_num,
+                                'errors': serializer.errors
+                            })
+                    except Exception as e:
+                        error_rows.append({
+                            'row': row_num,
+                            'errors': str(e)
+                        })
+                
+                return Response({
+                    'message': f'Successfully created {created_count} records',
+                    'errors': error_rows if error_rows else None
+                }, status=status.HTTP_201_CREATED if created_count > 0 else status.HTTP_400_BAD_REQUEST)
+                
+            except Exception as e:
+                return Response({"error": f"Error processing CSV: {str(e)}"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+        
+        # For Excel files, you would need to use a library like openpyxl or pandas
+        # This is a placeholder for Excel processing
+        return Response({"error": "Excel processing not implemented yet"}, 
+                       status=status.HTTP_501_NOT_IMPLEMENTED)
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """
+        Export data in CSV format
+        """
+        format_type = request.query_params.get('format', 'csv')
+        
+        if format_type.lower() != 'csv':
+            return Response({"error": f"Format {format_type} not supported"}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        # Apply filters if provided
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Create CSV response
+        response = Response(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="competitor_prices.csv"'
+        
+        # Write CSV data
+        writer = csv.writer(response)
+        
+        # Write header row
+        writer.writerow([
+            'SKU Category', 
+            'SKU Size', 
+            'SKU Name/Brand',
+            'KD Case',
+            'KD Unit',
+            'KD Price/Gram',
+            'Wholesales price',
+            'Open Market Price',
+            'NG Price',
+            'Small Supermarket Price',
+            'Is Unilever',
+            'Location',
+            'Created At'
+        ])
+        
+        # Write data rows
+        for item in queryset:
+            writer.writerow([
+                item.sku_category,
+                item.sku_size,
+                f"{item.sku_name} {item.brand}".strip(),
+                item.kd_case,
+                item.kd_unit,
+                item.kd_price_gram,
+                item.wholesale_price,
+                item.open_market_price,
+                item.ng_price,
+                item.small_supermarket_price,
+                'Yes' if item.is_unilever else 'No',
+                item.location,
+                item.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            ])
+        
+        return response
 
 
 

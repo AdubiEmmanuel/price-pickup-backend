@@ -3,8 +3,12 @@ from rest_framework.routers import DefaultRouter
 from .views import CompetitorPriceViewSet
 
 router = DefaultRouter()
-router.register(r'competitor-prices', CompetitorPriceViewSet, basename='competitor-price')
+router.register(r'competitor-prices', CompetitorPriceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
 ]
+
+
+
+
