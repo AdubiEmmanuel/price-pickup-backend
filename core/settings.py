@@ -34,9 +34,11 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React default port
     "http://127.0.0.1:3000",
+    "https://price-pickup.vercel.app"  # Removed the path component
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https?://.*\.your-domain\.com$",
+    r"^https?://.*\.vercel\.app$",
 ]
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -159,6 +161,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
 }
+
+
 
 
 
