@@ -1,0 +1,182 @@
+[
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "BULK PACK",
+      "sku_name": "Knorr chicken bulk 3x2kg",
+      "brand": "Knorr",
+      "kd_case": 13568.00,
+      "kd_unit": 4523.00,
+      "kd_price_gram": 2.30,
+      "wholesale_price": 14500.00,
+      "open_market_price": 7000.00,
+      "ng_price": null,
+      "small_supermarket_price": null,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "BULK PACK",
+      "sku_name": "Knorr beef bulk 3x2kg",
+      "brand": "Knorr",
+      "kd_case": 18100.00,
+      "kd_unit": 6033.00,
+      "kd_price_gram": 3.00,
+      "wholesale_price": 18800.00,
+      "open_market_price": 7000.00,
+      "ng_price": 5000.00,
+      "small_supermarket_price": null,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "BULK PACK",
+      "sku_name": "Royco bulk",
+      "brand": "Royco",
+      "kd_case": 13530.00,
+      "kd_unit": 4510.00,
+      "kd_price_gram": 2.30,
+      "wholesale_price": 14000.00,
+      "open_market_price": 5000.00,
+      "ng_price": 4700.00,
+      "small_supermarket_price": 4700.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "MID PACK",
+      "sku_name": "Knorr Beef 4g by 25 x 40",
+      "brand": "Knorr",
+      "kd_case": 15102.00,
+      "kd_unit": 378.00,
+      "kd_price_gram": 3.80,
+      "wholesale_price": 16000.00,
+      "open_market_price": 700.00,
+      "ng_price": 850.00,
+      "small_supermarket_price": 500.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "ORALS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Closeup 8.5G",
+      "brand": "Closeup",
+      "kd_case": 9600.00,
+      "kd_unit": 40.00,
+      "kd_price_gram": 4.70,
+      "wholesale_price": 10500.00,
+      "open_market_price": 45.00,
+      "ng_price": 100.00,
+      "small_supermarket_price": 100.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "ORALS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Pepsodent 8.5G",
+      "brand": "Pepsodent",
+      "kd_case": 9600.00,
+      "kd_unit": 40.00,
+      "kd_price_gram": 4.70,
+      "wholesale_price": 10500.00,
+      "open_market_price": 45.00,
+      "ng_price": 100.00,
+      "small_supermarket_price": 100.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "SKIN CARE",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Vaseline blueseal 50ml",
+      "brand": "Vaseline",
+      "kd_case": 131230.00,
+      "kd_unit": 456.00,
+      "kd_price_gram": 9.10,
+      "wholesale_price": 140000.00,
+      "open_market_price": 600.00,
+      "ng_price": 1000.00,
+      "small_supermarket_price": 700.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "SKIN CARE",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Pears baby jelly 225g",
+      "brand": "Pears",
+      "kd_case": 58190.00,
+      "kd_unit": 1455.00,
+      "kd_price_gram": 6.50,
+      "wholesale_price": 48000.00,
+      "open_market_price": 1300.00,
+      "ng_price": 2000.00,
+      "small_supermarket_price": 1500.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "DEOS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Rexona 50ml",
+      "brand": "Rexona",
+      "kd_case": 28600.00,
+      "kd_unit": 1192.00,
+      "kd_price_gram": 23.80,
+      "wholesale_price": 33000.00,
+      "open_market_price": 1500.00,
+      "ng_price": 1500.00,
+      "small_supermarket_price": 1500.00,
+      "is_unilever": true,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  }
+]
