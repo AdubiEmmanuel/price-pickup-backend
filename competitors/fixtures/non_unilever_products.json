@@ -1,0 +1,162 @@
+[
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "MID PACK",
+      "sku_name": "Gino 5g by 22 x 40",
+      "brand": "Gino",
+      "kd_case": 5500.00,
+      "kd_unit": 138.00,
+      "kd_price_gram": 1.30,
+      "wholesale_price": 6200.00,
+      "open_market_price": 200.00,
+      "ng_price": 250.00,
+      "small_supermarket_price": 300.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Gino Max Beef 5g by 100 x 10",
+      "brand": "Gino",
+      "kd_case": 9200.00,
+      "kd_unit": 920.00,
+      "kd_price_gram": 1.80,
+      "wholesale_price": null,
+      "open_market_price": 1200.00,
+      "ng_price": 1300.00,
+      "small_supermarket_price": 1000.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "NUTRITION",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Gino Max Chicken 5g by 100 x 10",
+      "brand": "Gino",
+      "kd_case": 12500.00,
+      "kd_unit": 1250.00,
+      "kd_price_gram": 2.50,
+      "wholesale_price": null,
+      "open_market_price": 1400.00,
+      "ng_price": 1300.00,
+      "small_supermarket_price": 1300.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "ORALS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Colgate spicy fresh sachet 9g",
+      "brand": "Colgate",
+      "kd_case": 11700.00,
+      "kd_unit": 45.00,
+      "kd_price_gram": 5.00,
+      "wholesale_price": 12000.00,
+      "open_market_price": 45.00,
+      "ng_price": 100.00,
+      "small_supermarket_price": 100.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "ORALS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Colgate Mint sachet 9g",
+      "brand": "Colgate",
+      "kd_case": 11700.00,
+      "kd_unit": 45.00,
+      "kd_price_gram": 5.00,
+      "wholesale_price": 11700.00,
+      "open_market_price": 45.00,
+      "ng_price": 100.00,
+      "small_supermarket_price": 100.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "SKIN CARE",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Cussons Jelly 90ml",
+      "brand": "Cussons",
+      "kd_case": 46260.00,
+      "kd_unit": 643.00,
+      "kd_price_gram": 7.10,
+      "wholesale_price": 46500.00,
+      "open_market_price": 730.00,
+      "ng_price": 800.00,
+      "small_supermarket_price": 800.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "SKIN CARE",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Fressia Jelly 125Ml",
+      "brand": "Fressia",
+      "kd_case": 26100.00,
+      "kd_unit": 544.00,
+      "kd_price_gram": 4.40,
+      "wholesale_price": 30000.00,
+      "open_market_price": 700.00,
+      "ng_price": 900.00,
+      "small_supermarket_price": 700.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "competitors.competitorprice",
+    "fields": {
+      "sku_category": "DEOS",
+      "sku_size": "REGULAR PACK",
+      "sku_name": "Enchanter Roll on 50ml",
+      "brand": "Enchanter",
+      "kd_case": 41000.00,
+      "kd_unit": 1708.00,
+      "kd_price_gram": 34.20,
+      "wholesale_price": 42000.00,
+      "open_market_price": 1700.00,
+      "ng_price": 1800.00,
+      "small_supermarket_price": 2000.00,
+      "is_unilever": false,
+      "source": "FORM",
+      "created_at": "2023-09-01T00:00:00Z",
+      "updated_at": "2023-09-01T00:00:00Z"
+    }
+  }
+]
