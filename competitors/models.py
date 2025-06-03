@@ -7,13 +7,11 @@ class CompetitorPrice(models.Model):
     ]
     
     SKU_CATEGORY_CHOICES = [
-        ('CASE', 'CASE'),
-        ('DEOS', 'DEOS'),
         ('NUTRITION', 'NUTRITION'),
-        ('ORALS', 'ORALS'),
+        ('ORAL CARE', 'ORAL CARE'),
+        ('DEODORANT', 'DEODORANT'),
         ('SKIN CARE', 'SKIN CARE'),
         ('SALVORY', 'SALVORY'),
-        ('DEODORANT', 'DEODORANT'),
     ]
 
     SKU_SIZE_CHOICES = [
@@ -21,10 +19,7 @@ class CompetitorPrice(models.Model):
         ('MID PACK', 'MID PACK'),
         ('REGULAR PACK', 'REGULAR PACK'),
         ('SMALL PACK', 'SMALL PACK'),
-        ('POWERS', 'POWERS'),
-        ('Bulk Pack', 'Bulk Pack'),
-        ('Mid Pack', 'Mid Pack'),
-        ('Powders', 'Powders'),
+        ('POWDERS', 'POWDERS'),
     ]
 
     MARKET_CHOICES = [
@@ -37,13 +32,15 @@ class CompetitorPrice(models.Model):
     # Basic SKU information
     sku_category = models.CharField(
         max_length=255,
+        choices=SKU_CATEGORY_CHOICES,
         verbose_name='SKU Category',
         null=True,
         blank=True
     )
-    
+
     sku_size = models.CharField(
         max_length=255,
+        choices=SKU_SIZE_CHOICES,
         verbose_name='SKU Size',
         null=True,
         blank=True

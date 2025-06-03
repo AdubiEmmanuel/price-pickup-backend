@@ -28,6 +28,68 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=False, methods=['post'])
+    def create_price_entry(self, request):
+        """
+        Create a new price entry with market-specific pricing.
+        Expected payload:
+        {
+            "sku_category": "NUTRITION",
+            "sku_size": "BULK PACK",
+            "sku_name": "Product Name",
+            "brand": "Brand Name",
+            "market_type": "OPEN_MARKET",
+            "price": 150.00,
+            "is_unilever": true,
+            "location": "Lagos"
+        }
+        """
+        data = request.data.copy()
+
+        # Validate required fields
+        required_fields = ['sku_category', 'sku_size', 'sku_name', 'market_type', 'price']
+        for field in required_fields:
+            if not data.get(field):
+                return Response(
+                    {"error": f"{field.replace('_', ' ').title()} is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Map market type to appropriate price field
+        market_type = data.get('market_type')
+        price = data.get('price')
+
+        price_field_mapping = {
+            'OPEN_MARKET': 'open_market_price',
+            'NG': 'ng_price',
+            'SMALL_SUPERMARKET': 'small_supermarket_price',
+            'WHOLESALE': 'wholesale_price',
+        }
+
+        if market_type not in price_field_mapping:
+            return Response(
+                {"error": f"Invalid market type. Must be one of: {', '.join(price_field_mapping.keys())}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Set the appropriate price field
+        data[price_field_mapping[market_type]] = price
+
+        # Remove the generic price and market_type fields as they're not model fields
+        data.pop('price', None)
+        data.pop('market_type', None)
+
+        # Set source as FORM
+        data['source'] = 'FORM'
+
+        # Create the record
+        serializer = self.get_serializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
     def upload(self, request):
         """
         Upload and process CSV/Excel files
