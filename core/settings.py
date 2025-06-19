@@ -96,7 +96,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database configuration
 # First check for DATABASE_URL, then fall back to individual settings
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://price_pickup_database_user:Cyeysh8VhHcApVS1ZYDA6nN9Gtx0vprG@dpg-d0fu3vbuibrs73f35vug-a.oregon-postgres.render.com/price_pickup_database')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://price_pickup_db_user:2kcZQnYVHaLySIVJBbdgGC9Rg2sep5a3@dpg-d1a2353ipnbc739lq3og-a.oregon-postgres.render.com/price_pickup_db')
 
 if DATABASE_URL:
     url = urlparse(DATABASE_URL)
