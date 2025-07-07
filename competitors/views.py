@@ -196,10 +196,76 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                 return Response({"error": f"Error processing CSV: {str(e)}"}, 
                                status=status.HTTP_400_BAD_REQUEST)
         
-        # For Excel files, you would need to use a library like openpyxl or pandas
-        # This is a placeholder for Excel processing
-        return Response({"error": "Excel processing not implemented yet"}, 
-                       status=status.HTTP_501_NOT_IMPLEMENTED)
+        # For Excel files, process using openpyxl
+        if file.name.endswith('.xlsx'):
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(file)
+                ws = wb.active
+                
+                # Map Excel headers to model fields
+                field_mapping = {
+                    'SKU Category': 'sku_category',
+                    'SKU Size': 'sku_size',
+                    'SKU Name': 'sku_name',
+                    'Brand': 'brand',
+                    'KD Case': 'kd_case',
+                    'KD Unit': 'kd_unit',
+                    'KD Price/Gram': 'kd_price_gram',
+                    'Wholesales price': 'wholesale_price',
+                    'Open Market Price': 'open_market_price',
+                    'NG Price': 'ng_price',
+                    'Small Supermarket Price': 'small_supermarket_price',
+                }
+                
+                # Read headers from the first row
+                headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+                header_indices = {header: idx for idx, header in enumerate(headers)}
+                
+                # Validate headers
+                if 'SKU Category' not in header_indices:
+                    return Response({"error": "Excel format is invalid - SKU Category not found"}, status=status.HTTP_400_BAD_REQUEST)
+                
+                created_count = 0
+                error_rows = []
+                for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                    try:
+                        data = {}
+                        for excel_field, model_field in field_mapping.items():
+                            idx = header_indices.get(excel_field)
+                            if idx is not None:
+                                value = row[idx]
+                                if value is not None:
+                                    value = str(value).strip()
+                                else:
+                                    value = ''
+                                # Handle numeric fields
+                                if model_field in ('kd_case', 'kd_unit', 'kd_price_gram', 'wholesale_price', 'open_market_price', 'ng_price', 'small_supermarket_price'):
+                                    if value:
+                                        try:
+                                            data[model_field] = float(value.replace(',', ''))
+                                        except Exception:
+                                            pass
+                                else:
+                                    data[model_field] = value
+                        # Set source to EXCEL
+                        data['source'] = 'EXCEL'
+                        # Determine if it's a Unilever product (customize as needed)
+                        data['is_unilever'] = 'Unilever' in data.get('brand', '')
+                        serializer = self.get_serializer(data=data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            created_count += 1
+                        else:
+                            error_rows.append({'row': row_num, 'errors': serializer.errors})
+                    except Exception as e:
+                        error_rows.append({'row': row_num, 'errors': str(e)})
+                return Response({
+                    'message': f'Successfully created {created_count} records',
+                    'errors': error_rows if error_rows else None
+                }, status=status.HTTP_201_CREATED if created_count > 0 else status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": f"Error processing Excel: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def export(self, request):

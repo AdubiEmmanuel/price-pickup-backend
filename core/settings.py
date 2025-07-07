@@ -108,6 +108,9 @@ if DATABASE_URL:
             "PASSWORD": url.password,
             "HOST": url.hostname,
             "PORT": url.port or '5432',
+            "OPTIONS": {
+                "sslmode": "require",
+            }
         }
     }
 else:
