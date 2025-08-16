@@ -89,6 +89,39 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['post', 'patch'])
+    def update_price(self, request, pk=None):
+        """
+        Update a single market-specific price for a SKU.
+        Accepts: market_type (OPEN_MARKET|NG|SMALL_SUPERMARKET|WHOLESALE) and price (number).
+        For records with source='CSV', this will clone and create a new FORM record as per serializer.update() logic.
+        """
+        market_type = request.data.get('market_type')
+        price = request.data.get('price')
+        if market_type is None or price is None:
+            return Response({"error": "market_type and price are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        mapping = {
+            'OPEN_MARKET': 'open_market_price',
+            'NG': 'ng_price',
+            'SMALL_SUPERMARKET': 'small_supermarket_price',
+            'WHOLESALE': 'wholesale_price',
+        }
+        if market_type not in mapping:
+            return Response({"error": f"Invalid market type. Must be one of: {', '.join(mapping.keys())}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            price_val = float(price)
+        except (TypeError, ValueError):
+            return Response({"error": "price must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        partial_data = {mapping[market_type]: price_val}
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=partial_data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'])
     def upload(self, request):
         """

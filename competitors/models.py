@@ -30,6 +30,14 @@ class CompetitorPrice(models.Model):
     ]
 
     # Basic SKU information
+    sku_code = models.CharField(
+        max_length=20,
+        verbose_name='SKU Code',
+        null=True,
+        blank=True,
+        unique=True
+    )
+    
     sku_category = models.CharField(
         max_length=255,
         choices=SKU_CATEGORY_CHOICES,
@@ -53,9 +61,20 @@ class CompetitorPrice(models.Model):
         blank=True
     )
     
+    BRAND_CHOICES = [
+        ('PEARS', 'PEARS'),
+        ('VASELINE', 'VASELINE'),
+        ('CLOSE UP', 'CLOSE UP'),
+        ('PEPSODENT', 'PEPSODENT'),
+        ('KNORR', 'KNORR'),
+        ('ROYCO', 'ROYCO'),
+        ('REXONA', 'REXONA'),
+    ]
+
     brand = models.CharField(
         max_length=255,
         verbose_name='Brand',
+        choices=BRAND_CHOICES,
         blank=True,
         null=True
     )
