@@ -147,12 +147,17 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                 field_mapping = {
                     'SKU Category': 'sku_category',
                     'SKU Size': 'sku_size',
-                    'SKU Name/Brand': 'sku_name_brand',  # We'll split this later
+                    'SKU Name/Brand': 'sku_name_brand',  # Split into sku_name and brand using known brands
+                    'SKU Name': 'sku_name',              # Support separate SKU Name column
+                    'Brand': 'brand',                    # Support separate Brand column
                     'KD Case': 'kd_case',
                     'KD Unit': 'kd_unit',
                     'KD Price/Gram': 'kd_price_gram',
-                    'Wholesales price': 'wholesale_price',
+                    'Wholesales price': 'wholesale_price',   # Some sheets use this header
+                    'Wholesale price': 'wholesale_price',    # Accept common variant
+                    'Wholesale Price': 'wholesale_price',
                     'Open Market Price': 'open_market_price',
+                    'Open Market price': 'open_market_price',
                     'NG Price': 'ng_price',
                     'Small Supermarket Price': 'small_supermarket_price',
                 }
@@ -176,15 +181,23 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                 
                                 # Handle the SKU Name/Brand field - split into name and brand
                                 if model_field == 'sku_name_brand' and value:
-                                    parts = value.split()
-                                    if len(parts) > 1:
-                                        # Last part is the brand
-                                        data['brand'] = parts[-1]
-                                        # Rest is the SKU name
-                                        data['sku_name'] = ' '.join(parts[:-1])
+                                    # Try to detect the brand from known BRAND_CHOICES within the string
+                                    known_brands = [b for (b, _) in CompetitorPrice.BRAND_CHOICES]
+                                    val_upper = value.upper()
+                                    detected_brand = None
+                                    for b in known_brands:
+                                        if b in val_upper:
+                                            detected_brand = b
+                                            break
+                                    if detected_brand:
+                                        data['brand'] = detected_brand
+                                        # Remove the detected brand token from the name (case-insensitive)
+                                        data['sku_name'] = ' '.join([w for w in value.split() if w.upper() != detected_brand])
+                                        data['sku_name'] = data['sku_name'].strip() or value
                                     else:
+                                        # If we cannot detect brand, keep whole string as name and leave brand empty
                                         data['sku_name'] = value
-                                        data['brand'] = ''
+                                        data['brand'] = None
                                 # Handle numeric fields
                                 elif model_field in ('kd_case', 'kd_unit', 'kd_price_gram', 
                                                     'wholesale_price', 'open_market_price', 
@@ -198,11 +211,21 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                 else:
                                     data[model_field] = value
                         
-                        # Set source to CSV
+                        # Normalize category/size/brand against allowed choices
+                        if data.get('sku_category'):
+                            cat = str(data['sku_category']).strip().upper()
+                            cat_syn = {'ORALS': 'ORAL CARE', 'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT'}
+                            data['sku_category'] = cat_syn.get(cat, cat)
+                        if data.get('sku_size'):
+                            data['sku_size'] = str(data['sku_size']).strip().upper()
+                        if data.get('brand'):
+                            brand_map = {'CLOSEUP': 'CLOSE UP'}
+                            b = str(data['brand']).strip().upper()
+                            data['brand'] = brand_map.get(b, b)
+                        # Set source to CSV (imports are treated as CSV source)
                         data['source'] = 'CSV'
-                        
-                        # Determine if it's a Unilever product (you may need to adjust this logic)
-                        data['is_unilever'] = 'Example' in data.get('sku_name', '')
+                        # Heuristic for Unilever product can be adjusted; default to False
+                        data['is_unilever'] = bool(data.get('is_unilever', False))
                         
                         # Create the record
                         serializer = self.get_serializer(data=data)
@@ -281,10 +304,20 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                             pass
                                 else:
                                     data[model_field] = value
-                        # Set source to EXCEL
-                        data['source'] = 'EXCEL'
-                        # Determine if it's a Unilever product (customize as needed)
-                        data['is_unilever'] = 'Unilever' in data.get('brand', '')
+                        # Normalize category/size/brand
+                        if data.get('sku_category'):
+                            cat = str(data['sku_category']).strip().upper()
+                            cat_syn = {'ORALS': 'ORAL CARE', 'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT'}
+                            data['sku_category'] = cat_syn.get(cat, cat)
+                        if data.get('sku_size'):
+                            data['sku_size'] = str(data['sku_size']).strip().upper()
+                        if data.get('brand'):
+                            brand_map = {'CLOSEUP': 'CLOSE UP'}
+                            b = str(data['brand']).strip().upper()
+                            data['brand'] = brand_map.get(b, b)
+                        # Treat EXCEL imports as CSV source to satisfy model choices
+                        data['source'] = 'CSV'
+                        data['is_unilever'] = bool(data.get('is_unilever', False))
                         serializer = self.get_serializer(data=data)
                         if serializer.is_valid():
                             serializer.save()
@@ -299,6 +332,47 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_201_CREATED if created_count > 0 else status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 return Response({"error": f"Error processing Excel: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def distinct_skus(self, request):
+        """
+        Return a distinct list of SKU entries for populating dashboards/forms.
+        Applies the same filters as list endpoint.
+        Response items: sku_name, brand, sku_category, sku_size, latest_id
+        """
+        filtered = self.filter_queryset(self.get_queryset())
+        # Use values + distinct to get unique combinations
+        rows = (filtered
+                .values('sku_name', 'brand', 'sku_category', 'sku_size')
+                .distinct())
+        # Optionally fetch a latest id for each combo to update later
+        results = []
+        for row in rows:
+            ref = (filtered.filter(
+                sku_name=row['sku_name'],
+                brand=row['brand'],
+                sku_category=row['sku_category'],
+                sku_size=row['sku_size']
+            ).order_by('-created_at').first())
+            row['latest_id'] = ref.id if ref else None
+            results.append(row)
+        return Response(results, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def search_skus(self, request):
+        """
+        Lightweight SKU search for typeahead.
+        Query param: q (matches sku_name or brand, case-insensitive)
+        Returns up to 50 distinct results.
+        """
+        q = request.query_params.get('q', '').strip()
+        qs = self.get_queryset()
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(Q(sku_name__icontains=q) | Q(brand__icontains=q))
+        rows = (qs.values('sku_name', 'brand', 'sku_category', 'sku_size')
+                  .distinct()[:50])
+        return Response(list(rows), status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def export(self, request):
