@@ -11,6 +11,7 @@ Interactive Docs
 - ReDoc: /api/docs/redoc/
 - OpenAPI JSON: /api/docs/swagger.json
 - OpenAPI YAML: /api/docs/swagger.yaml
+<!-- ... -->
 
 Authentication and CORS
 - Authentication: Not required (AllowAny). You can call endpoints without a token.
