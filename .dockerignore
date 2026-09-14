@@ -1,0 +1,17 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
+staticfiles/
+media/
+db.sqlite3
+*.md
+.qodo/
+.vscode/
+.idea/
+test_*.py

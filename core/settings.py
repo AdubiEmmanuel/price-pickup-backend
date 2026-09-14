@@ -2,16 +2,28 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from urllib.parse import urlparse
+from django.core.exceptions import ImproperlyConfigured
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'your-default-secret-key-for-dev')
+# Defaults to False (safe) if unset; local dev must opt in via DEBUG=True in .env
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        # Fixed, clearly-marked non-secret value so local dev works without a .env file.
+        # Never used in production because DEBUG must be False there (see check below).
+        SECRET_KEY = 'django-insecure-dev-only-do-not-use-in-production'
+    else:
+        raise ImproperlyConfigured('SECRET_KEY environment variable is required when DEBUG=False')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.onrender.com']  # Add your Render domain
+# Comma-separated list via env, e.g. "localhost,127.0.0.1,myapp.onrender.com"
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',') if h.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -30,12 +42,13 @@ INSTALLED_APPS = [
 ]
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only, restrict in production
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Wide open only in local/dev; must be explicit in production
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React default port
-    "http://127.0.0.1:3000",
-    "https://price-pickup.vercel.app"  # Removed the path component
+    o.strip() for o in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,https://price-pickup.vercel.app'
+    ).split(',') if o.strip()
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https?://.*\.your-domain\.com$",
@@ -95,8 +108,14 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database configuration
-# First check for DATABASE_URL, then fall back to individual settings
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://price_pickup_db_user:2kcZQnYVHaLySIVJBbdgGC9Rg2sep5a3@dpg-d1a2353ipnbc739lq3og-a.oregon-postgres.render.com/price_pickup_db')
+# First check for DATABASE_URL, then fall back to individual settings.
+# No hardcoded credentials: every value must come from the environment (.env locally,
+# real env vars in production/Docker).
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+# SSL is required for managed Postgres (Render) but must be disabled for a local/Docker
+# Postgres container, which doesn't speak TLS. Override with DB_SSL_REQUIRE=false locally.
+DB_SSL_REQUIRE = os.getenv('DB_SSL_REQUIRE', 'true').lower() == 'true'
 
 if DATABASE_URL:
     url = urlparse(DATABASE_URL)
@@ -109,20 +128,25 @@ if DATABASE_URL:
             "HOST": url.hostname,
             "PORT": url.port or '5432',
             "OPTIONS": {
-                "sslmode": "require",
+                "sslmode": "require" if DB_SSL_REQUIRE else "disable",
             }
         }
     }
+elif not DEBUG:
+    raise ImproperlyConfigured('DATABASE_URL (or DB_NAME/DB_USER/DB_PASSWORD/DB_HOST/DB_PORT) is required when DEBUG=False')
 else:
-    # Fall back to individual settings
+    # Fall back to individual settings for local dev without a DATABASE_URL.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'your_db_name'),
-            'USER': os.getenv('DB_USER', 'your_db_user'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'your_db_password'),
+            'NAME': os.getenv('DB_NAME', 'price_pickup'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                "sslmode": "require" if DB_SSL_REQUIRE else "disable",
+            }
         }
     }
 
