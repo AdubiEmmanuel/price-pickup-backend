@@ -1,26 +1,16 @@
 from django.db import models
+from .choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
 
 class CompetitorPrice(models.Model):
     SOURCE_CHOICES = [
         ('CSV', 'Imported from CSV'),
         ('FORM', 'Created from form'),
     ]
-    
-    SKU_CATEGORY_CHOICES = [
-        ('NUTRITION', 'NUTRITION'),
-        ('ORAL CARE', 'ORAL CARE'),
-        ('DEODORANT', 'DEODORANT'),
-        ('SKIN CARE', 'SKIN CARE'),
-        ('SALVORY', 'SALVORY'),
-    ]
 
-    SKU_SIZE_CHOICES = [
-        ('BULK PACK', 'BULK PACK'),
-        ('MID PACK', 'MID PACK'),
-        ('REGULAR PACK', 'REGULAR PACK'),
-        ('SMALL PACK', 'SMALL PACK'),
-        ('POWDERS', 'POWDERS'),
-    ]
+    # Shared with the `stock` app - see competitors/choices.py
+    SKU_CATEGORY_CHOICES = SKU_CATEGORY_CHOICES
+    SKU_SIZE_CHOICES = SKU_SIZE_CHOICES
+    BRAND_CHOICES = BRAND_CHOICES
 
     MARKET_CHOICES = [
         ('OPEN_MARKET', 'Open Market'),
@@ -61,16 +51,6 @@ class CompetitorPrice(models.Model):
         blank=True
     )
     
-    BRAND_CHOICES = [
-        ('PEARS', 'PEARS'),
-        ('VASELINE', 'VASELINE'),
-        ('CLOSE UP', 'CLOSE UP'),
-        ('PEPSODENT', 'PEPSODENT'),
-        ('KNORR', 'KNORR'),
-        ('ROYCO', 'ROYCO'),
-        ('REXONA', 'REXONA'),
-    ]
-
     brand = models.CharField(
         max_length=255,
         verbose_name='Brand',

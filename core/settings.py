@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     # Local apps
-    'competitors',  # We'll create this app
+    'competitors',
+    'stock',
 ]
 
 # CORS settings

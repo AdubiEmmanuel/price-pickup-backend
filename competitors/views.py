@@ -341,8 +341,11 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         Response items: sku_name, brand, sku_category, sku_size, latest_id
         """
         filtered = self.filter_queryset(self.get_queryset())
-        # Use values + distinct to get unique combinations
+        # Use values + distinct to get unique combinations. Clear the model's
+        # default ordering (-created_at) first - otherwise Postgres can't
+        # collapse rows to DISTINCT on these four columns alone.
         rows = (filtered
+                .order_by()
                 .values('sku_name', 'brand', 'sku_category', 'sku_size')
                 .distinct())
         # Optionally fetch a latest id for each combo to update later
@@ -370,7 +373,8 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         if q:
             from django.db.models import Q
             qs = qs.filter(Q(sku_name__icontains=q) | Q(brand__icontains=q))
-        rows = (qs.values('sku_name', 'brand', 'sku_category', 'sku_size')
+        rows = (qs.order_by()
+                  .values('sku_name', 'brand', 'sku_category', 'sku_size')
                   .distinct()[:50])
         return Response(list(rows), status=status.HTTP_200_OK)
 
