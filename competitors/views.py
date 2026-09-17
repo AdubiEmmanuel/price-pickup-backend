@@ -421,9 +421,12 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def distinct_skus(self, request):
         """
-        Return a distinct list of SKU entries for populating dashboards/forms.
-        Applies the same filters as list endpoint.
-        Response items: sku_name, brand, sku_category, sku_size, latest_id
+        Return a distinct list of SKU entries for populating dashboards/forms
+        (e.g. ?is_unilever=true for the Customer Stock "select SKU" picker).
+        Applies the same filters as the list endpoint.
+        Response items: sku_name, brand, sku_category, sku_size, latest_id,
+        kd_case, kd_unit, units_per_case, is_unilever - the latter three
+        taken from that combo's most recent record.
         """
         filtered = self.filter_queryset(self.get_queryset())
         # Use values + distinct to get unique combinations. Clear the model's
@@ -433,7 +436,7 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                 .order_by()
                 .values('sku_name', 'brand', 'sku_category', 'sku_size')
                 .distinct())
-        # Optionally fetch a latest id for each combo to update later
+        # Fetch each combo's latest record for its id and current prices
         results = []
         for row in rows:
             ref = (filtered.filter(
@@ -443,6 +446,10 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                 sku_size=row['sku_size']
             ).order_by('-created_at').first())
             row['latest_id'] = ref.id if ref else None
+            row['kd_case'] = ref.kd_case if ref else None
+            row['kd_unit'] = ref.kd_unit if ref else None
+            row['units_per_case'] = ref.units_per_case if ref else None
+            row['is_unilever'] = ref.is_unilever if ref else None
             results.append(row)
         return Response(results, status=status.HTTP_200_OK)
 
