@@ -141,6 +141,35 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post', 'patch'])
+    def update_kd_price(self, request, pk=None):
+        """
+        Update this SKU's own Case or Unit price (kd_case/kd_unit) - the
+        price a salesman records when picking up prices on an existing SKU,
+        as opposed to the separate per-market observed prices above.
+        Accepts: price_type ('case'|'unit') and price (number).
+        """
+        price_type = request.data.get('price_type')
+        price = request.data.get('price')
+        if price_type is None or price is None:
+            return Response({"error": "price_type and price are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        mapping = {'case': 'kd_case', 'unit': 'kd_unit'}
+        if price_type not in mapping:
+            return Response({"error": "Invalid price_type. Must be one of: case, unit"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            price_val = float(price)
+        except (TypeError, ValueError):
+            return Response({"error": "price must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        partial_data = {mapping[price_type]: price_val}
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=partial_data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'])
     def upload(self, request):
         """
