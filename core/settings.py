@@ -133,10 +133,25 @@ if DATABASE_URL:
             }
         }
     }
+elif os.getenv('DB_NAME') and os.getenv('DB_HOST'):
+    # Individual DB_* vars (as declared in render.yaml) are just as valid as DATABASE_URL.
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                "sslmode": "require" if DB_SSL_REQUIRE else "disable",
+            }
+        }
+    }
 elif not DEBUG:
     raise ImproperlyConfigured('DATABASE_URL (or DB_NAME/DB_USER/DB_PASSWORD/DB_HOST/DB_PORT) is required when DEBUG=False')
 else:
-    # Fall back to individual settings for local dev without a DATABASE_URL.
+    # Fall back to local Postgres defaults for dev without any DB env vars set.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
