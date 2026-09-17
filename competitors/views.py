@@ -7,6 +7,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import CompetitorPrice
 from .serializers import CompetitorPriceSerializer
+from .csv_utils import decode_csv_bytes
 
 CONFIRM_PHRASE = 'DELETE ALL'
 
@@ -157,7 +158,7 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         # Process CSV file
         if file.name.endswith('.csv'):
             try:
-                decoded_file = file.read().decode('utf-8')
+                decoded_file = decode_csv_bytes(file.read())
                 io_string = io.StringIO(decoded_file)
                 reader = csv.DictReader(io_string)
                 

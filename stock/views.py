@@ -12,6 +12,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
 from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
+from competitors.csv_utils import decode_csv_bytes
 from .models import Customer, CustomerStockEntry
 from .serializers import CustomerSerializer, CustomerStockEntrySerializer
 
@@ -81,7 +82,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             return Response({"error": "File must be CSV format"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            decoded_file = file.read().decode('utf-8-sig')
+            decoded_file = decode_csv_bytes(file.read())
             reader = csv.DictReader(io.StringIO(decoded_file))
         except Exception as e:
             return Response({"error": f"Error reading CSV: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
