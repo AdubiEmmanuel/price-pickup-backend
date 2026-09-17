@@ -1,7 +1,9 @@
-from datetime import timedelta
+import csv
+import io
+from datetime import datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
@@ -10,20 +12,101 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
 from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
-from .models import CustomerStockEntry
-from .serializers import CustomerStockEntrySerializer
+from .models import Customer, CustomerStockEntry
+from .serializers import CustomerSerializer, CustomerStockEntrySerializer
 
 
-def _group_key(entry):
-    return (entry.customer_name, entry.location, entry.sku_name, entry.brand)
+def _period_boundaries():
+    """Today/week/month/year start boundaries (server-local via Django's active timezone)."""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())  # Monday
+    month_start = today_start.replace(day=1)
+    year_start = today_start.replace(month=1, day=1)
+    return now, today_start, week_start, month_start, year_start
+
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    """
+    Store/customer master data: loaded up front by an admin (one at a time
+    or via CSV bulk upload), then selected - not typed - by salesmen.
+    """
+    queryset = Customer.objects.all()
+    serializer_class = CustomerSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['location']
+    search_fields = ['customer_code', 'customer_name', 'location']
+    ordering_fields = ['customer_name', 'customer_code', 'created_at']
+
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """Typeahead for the salesman's store picker, by code or name."""
+        q = request.query_params.get('q', '').strip()
+        qs = self.get_queryset()
+        if q:
+            qs = qs.filter(Q(customer_code__icontains=q) | Q(customer_name__icontains=q))
+        rows = qs.values('customer_code', 'customer_name', 'location')[:50]
+        return Response(list(rows), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """
+        Bulk-load/refresh the store roster from a CSV with columns:
+        Customer Code, Customer Name, Location. Upserts by Customer Code so
+        re-uploading a refreshed roster is safe.
+        """
+        if 'file' not in request.FILES:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        if not file.name.endswith('.csv'):
+            return Response({"error": "File must be CSV format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            decoded_file = file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(decoded_file))
+        except Exception as e:
+            return Response({"error": f"Error reading CSV: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        headers = reader.fieldnames
+        if not headers or 'Customer Code' not in headers:
+            return Response(
+                {"error": "CSV format is invalid - Customer Code column not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created_count = 0
+        updated_count = 0
+        error_rows = []
+        for row_num, row in enumerate(reader, start=2):
+            code = (row.get('Customer Code') or '').strip()
+            name = (row.get('Customer Name') or '').strip()
+            location = (row.get('Location') or '').strip()
+            if not code or not name:
+                error_rows.append({'row': row_num, 'errors': 'Customer Code and Customer Name are required'})
+                continue
+            try:
+                obj, was_created = Customer.objects.update_or_create(
+                    customer_code=code,
+                    defaults={'customer_name': name, 'location': location},
+                )
+                created_count += 1 if was_created else 0
+                updated_count += 0 if was_created else 1
+            except Exception as e:
+                error_rows.append({'row': row_num, 'errors': str(e)})
+
+        return Response({
+            'message': f'Created {created_count}, updated {updated_count} customers',
+            'errors': error_rows if error_rows else None,
+        }, status=status.HTTP_201_CREATED if (created_count or updated_count) else status.HTTP_400_BAD_REQUEST)
 
 
 class CustomerStockViewSet(viewsets.ModelViewSet):
-    queryset = CustomerStockEntry.objects.all()
+    queryset = CustomerStockEntry.objects.select_related('customer').all()
     serializer_class = CustomerStockEntrySerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['customer_name', 'location', 'sku_category', 'brand', 'is_unilever']
-    search_fields = ['customer_name', 'sku_name', 'brand', 'location']
+    filterset_fields = ['sku_category', 'brand', 'is_unilever']
+    search_fields = ['customer__customer_name', 'customer__customer_code', 'sku_name', 'brand', 'customer__location']
     ordering_fields = ['created_at', 'current_stock', 'sales_in']
 
     @action(detail=False, methods=['get'])
@@ -34,29 +117,15 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
             'brands': dict(BRAND_CHOICES),
         })
 
-    @action(detail=False, methods=['get'])
-    def search_customers(self, request):
-        """
-        Lightweight autocomplete for customer name + location, so salesmen
-        re-use the same customer identity instead of retyping it each visit.
-        """
-        q = request.query_params.get('q', '').strip()
-        qs = self.get_queryset()
-        if q:
-            qs = qs.filter(Q(customer_name__icontains=q) | Q(location__icontains=q))
-        # Clear the model's default ordering (-created_at) - otherwise Postgres
-        # can't collapse rows to DISTINCT on customer_name/location alone.
-        rows = qs.order_by().values('customer_name', 'location').distinct()[:50]
-        return Response(list(rows), status=status.HTTP_200_OK)
-
     @action(detail=False, methods=['post'])
     def submit_visit(self, request):
         """
-        "Checkout" endpoint for the POS-style form: one customer_name +
-        location, plus a cart of per-SKU line items, created together.
+        "Checkout" endpoint for the POS-style form: one customer_code (the
+        salesman must have picked a real store) plus a cart of per-SKU line
+        items, created together.
         Expected payload:
         {
-            "customer_name": "...", "location": "...",
+            "customer_code": "STR001",
             "items": [
                 {"sku_category": "...", "sku_size": "...", "brand": "...",
                  "sku_name": "...", "current_stock": 12, "sales_in": 5,
@@ -66,32 +135,25 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
         }
         """
         data = request.data
-        customer_name = data.get('customer_name')
-        location = data.get('location')
+        customer_code = data.get('customer_code')
         items = data.get('items')
 
-        if not customer_name or not location:
+        if not customer_code:
+            return Response({"error": "customer_code is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not Customer.objects.filter(customer_code=customer_code).exists():
             return Response(
-                {"error": "customer_name and location are required"},
+                {"error": f'No customer with code "{customer_code}". Ask an admin to add it first.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not items or not isinstance(items, list):
-            return Response(
-                {"error": "items must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "items must be a non-empty list"}, status=status.HTTP_400_BAD_REQUEST)
 
         created = []
         errors = []
 
         with transaction.atomic():
             for index, item in enumerate(items):
-                entry_data = {
-                    **item,
-                    'customer_name': customer_name,
-                    'location': location,
-                    'source': 'FORM',
-                }
+                entry_data = {**item, 'customer_code': customer_code, 'source': 'FORM'}
                 serializer = self.get_serializer(data=entry_data)
                 if serializer.is_valid():
                     serializer.save()
@@ -105,110 +167,157 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def dashboard_summary(self, request):
         """
-        Aggregated payload for the Regional Manager dashboard: latest
-        per-customer/SKU snapshot, low-stock/no-movement alerts, trend data
-        over the requested window, and customer rankings.
+        Store-centric payload for the Regional Manager dashboard: every
+        store (even ones with no visits yet) with its products broken down
+        by Today/WTD/MTD/YTD sales-in and current stock, plus alerts,
+        store rankings, and a trend series for the graph view over a
+        caller-selected date range.
         """
         params = request.query_params
-        days = int(params.get('days', 30))
         low_stock_threshold = int(params.get('low_stock_threshold', 5))
         stale_days = int(params.get('stale_days', 14))
+        customer_code = params.get('customer_code')
+        location = params.get('location')
 
-        qs = self.filter_queryset(self.get_queryset())
-
-        now = timezone.now()
-        window_start = now - timedelta(days=days)
+        now, today_start, week_start, month_start, year_start = _period_boundaries()
         stale_cutoff = now - timedelta(days=stale_days)
 
-        all_entries = list(qs.order_by('-created_at'))
+        start_date_param = params.get('start_date')
+        end_date_param = params.get('end_date')
+        end_date = (
+            datetime.strptime(end_date_param, '%Y-%m-%d').replace(tzinfo=now.tzinfo) + timedelta(days=1)
+            if end_date_param else now
+        )
+        start_date = (
+            datetime.strptime(start_date_param, '%Y-%m-%d').replace(tzinfo=now.tzinfo)
+            if start_date_param else now - timedelta(days=30)
+        )
 
-        # Latest entry per (customer, location, sku_name, brand) - entries are
-        # already ordered newest-first, so the first time we see a key wins.
-        latest_by_key = {}
-        for entry in all_entries:
-            key = _group_key(entry)
-            if key not in latest_by_key:
-                latest_by_key[key] = entry
+        customers_qs = Customer.objects.all()
+        if customer_code:
+            customers_qs = customers_qs.filter(customer_code=customer_code)
+        if location:
+            customers_qs = customers_qs.filter(location__icontains=location)
+        customers = list(customers_qs)
 
-        latest_snapshot = []
+        all_entries = list(
+            CustomerStockEntry.objects
+            .select_related('customer')
+            .filter(customer__in=customers)
+            .order_by('-created_at')
+        )
+
+        entries_by_customer = {}
+        for e in all_entries:
+            entries_by_customer.setdefault(e.customer_id, []).append(e)
+
+        def sum_since(entries, since):
+            return sum(e.sales_in or 0 for e in entries if e.created_at >= since)
+
+        stores = []
         alerts = []
-        for entry in latest_by_key.values():
-            snapshot = {
-                'customer_name': entry.customer_name,
-                'location': entry.location,
-                'sku_name': entry.sku_name,
-                'brand': entry.brand,
-                'sku_category': entry.sku_category,
-                'current_stock': entry.current_stock,
-                'sales_in': entry.sales_in,
-                'last_updated': entry.created_at,
-            }
-            latest_snapshot.append(snapshot)
+        ranking_rows = []
 
-            if entry.current_stock is not None and entry.current_stock <= low_stock_threshold:
-                alerts.append({**snapshot, 'reason': 'LOW_STOCK'})
-            if entry.created_at < stale_cutoff:
-                alerts.append({**snapshot, 'reason': 'NO_MOVEMENT'})
+        for customer in customers:
+            entries = entries_by_customer.get(customer.id, [])  # newest first
+            product_groups = {}
+            for e in entries:
+                product_groups.setdefault((e.sku_name, e.brand), []).append(e)
 
-        # Trends: entries within the window, grouped by customer+SKU, oldest first
-        windowed_entries = [e for e in all_entries if e.created_at >= window_start]
-        windowed_entries.sort(key=lambda e: e.created_at)
+            products = []
+            totals = {'current_stock': 0, 'sales_today': 0, 'sales_wtd': 0, 'sales_mtd': 0, 'sales_ytd': 0}
 
-        trend_groups = {}
-        for entry in windowed_entries:
-            key = _group_key(entry)
-            trend_groups.setdefault(key, []).append(entry)
+            for (sku_name, brand), prod_entries in product_groups.items():
+                latest = prod_entries[0]
+                sales_today = sum_since(prod_entries, today_start)
+                sales_wtd = sum_since(prod_entries, week_start)
+                sales_mtd = sum_since(prod_entries, month_start)
+                sales_ytd = sum_since(prod_entries, year_start)
 
-        trends = []
-        for (customer_name, location, sku_name, brand), entries in trend_groups.items():
-            total_sales_in = sum(e.sales_in or 0 for e in entries)
-            trends.append({
-                'customer_name': customer_name,
-                'location': location,
-                'sku_name': sku_name,
-                'brand': brand,
-                'total_sales_in': total_sales_in,
-                'avg_daily_sales_in': round(total_sales_in / days, 2) if days else 0,
-                'points': [
-                    {
-                        'date': e.created_at,
-                        'current_stock': e.current_stock,
-                        'sales_in': e.sales_in,
-                    }
-                    for e in entries
-                ],
+                products.append({
+                    'sku_name': sku_name,
+                    'brand': brand,
+                    'sku_category': latest.sku_category,
+                    'current_stock': latest.current_stock,
+                    'sales_today': sales_today,
+                    'sales_wtd': sales_wtd,
+                    'sales_mtd': sales_mtd,
+                    'sales_ytd': sales_ytd,
+                })
+                totals['current_stock'] += latest.current_stock or 0
+                totals['sales_today'] += sales_today
+                totals['sales_wtd'] += sales_wtd
+                totals['sales_mtd'] += sales_mtd
+                totals['sales_ytd'] += sales_ytd
+
+                alert_base = {
+                    'customer_code': customer.customer_code,
+                    'customer_name': customer.customer_name,
+                    'location': customer.location,
+                    'sku_name': sku_name,
+                    'brand': brand,
+                    'current_stock': latest.current_stock,
+                    'last_updated': latest.created_at,
+                }
+                if latest.current_stock is not None and latest.current_stock <= low_stock_threshold:
+                    alerts.append({**alert_base, 'reason': 'LOW_STOCK'})
+                if latest.created_at < stale_cutoff:
+                    alerts.append({**alert_base, 'reason': 'NO_MOVEMENT'})
+
+            stores.append({
+                'customer_code': customer.customer_code,
+                'customer_name': customer.customer_name,
+                'location': customer.location,
+                'products': products,
+                'totals': totals,
+            })
+            ranking_rows.append({
+                'customer_code': customer.customer_code,
+                'customer_name': customer.customer_name,
+                'location': customer.location,
+                'sales_mtd': totals['sales_mtd'],
+                'current_stock': totals['current_stock'],
             })
 
-        # Rankings: total sales_in and current_stock per customer within the window
-        customer_totals = {}
-        for entry in windowed_entries:
-            ckey = (entry.customer_name, entry.location)
-            totals = customer_totals.setdefault(ckey, {'sales_in': 0, 'current_stock': 0})
-            totals['sales_in'] += entry.sales_in or 0
-
-        # Use latest snapshot (not the summed window) for current stock per customer
-        for entry in latest_by_key.values():
-            ckey = (entry.customer_name, entry.location)
-            if ckey in customer_totals:
-                customer_totals[ckey]['current_stock'] += entry.current_stock or 0
-
-        ranking_rows = [
-            {'customer_name': name, 'location': loc, **totals}
-            for (name, loc), totals in customer_totals.items()
-        ]
-        by_sales_in = sorted(ranking_rows, key=lambda r: r['sales_in'], reverse=True)
+        by_sales_mtd = sorted(ranking_rows, key=lambda r: r['sales_mtd'], reverse=True)
         by_current_stock = sorted(ranking_rows, key=lambda r: r['current_stock'], reverse=True)
-
         rankings = {
-            'top_by_sales_in': by_sales_in[:5],
-            'bottom_by_sales_in': by_sales_in[-5:][::-1] if len(by_sales_in) > 5 else by_sales_in[::-1],
+            'top_by_sales_mtd': by_sales_mtd[:5],
+            'bottom_by_sales_mtd': by_sales_mtd[-5:][::-1] if len(by_sales_mtd) > 5 else by_sales_mtd[::-1],
             'top_by_current_stock': by_current_stock[:5],
             'bottom_by_current_stock': by_current_stock[-5:][::-1] if len(by_current_stock) > 5 else by_current_stock[::-1],
         }
 
+        # Trends: entries within the caller-selected range, for the graph view
+        windowed_entries = [e for e in all_entries if start_date <= e.created_at <= end_date]
+        windowed_entries.sort(key=lambda e: e.created_at)
+
+        trend_groups = {}
+        for e in windowed_entries:
+            trend_groups.setdefault((e.customer_id, e.sku_name, e.brand), []).append(e)
+
+        days_span = max(1, (end_date - start_date).days)
+        trends = []
+        for (customer_id, sku_name, brand), grp in trend_groups.items():
+            customer = grp[0].customer
+            total_sales_in = sum(e.sales_in or 0 for e in grp)
+            trends.append({
+                'customer_code': customer.customer_code,
+                'customer_name': customer.customer_name,
+                'location': customer.location,
+                'sku_name': sku_name,
+                'brand': brand,
+                'total_sales_in': total_sales_in,
+                'avg_daily_sales_in': round(total_sales_in / days_span, 2),
+                'points': [
+                    {'date': e.created_at, 'current_stock': e.current_stock, 'sales_in': e.sales_in}
+                    for e in grp
+                ],
+            })
+
         return Response({
-            'latest_snapshot': latest_snapshot,
+            'stores': stores,
             'alerts': alerts,
-            'trends': trends,
             'rankings': rankings,
+            'trends': trends,
         })
