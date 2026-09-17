@@ -1,5 +1,5 @@
 from django.db import models
-from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
+from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES
 
 
 class CustomerStockEntry(models.Model):
@@ -33,9 +33,9 @@ class CustomerStockEntry(models.Model):
         null=True,
         blank=True,
     )
+    # Free text, not constrained to BRAND_CHOICES - see competitors/models.py for why.
     brand = models.CharField(
         max_length=255,
-        choices=BRAND_CHOICES,
         verbose_name='Brand',
         null=True,
         blank=True,

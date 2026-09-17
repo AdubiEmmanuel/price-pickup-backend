@@ -160,12 +160,13 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                     'Open Market price': 'open_market_price',
                     'NG Price': 'ng_price',
                     'Small Supermarket Price': 'small_supermarket_price',
+                    'Is Unilever': 'is_unilever',
                 }
-                
+
                 # Validate headers
                 headers = reader.fieldnames
                 if not headers or 'SKU Category' not in headers:
-                    return Response({"error": "CSV format is invalid - SKU Category not found"}, 
+                    return Response({"error": "CSV format is invalid - SKU Category not found"},
                                    status=status.HTTP_400_BAD_REQUEST)
                 
                 # Process rows
@@ -199,8 +200,8 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                         data['sku_name'] = value
                                         data['brand'] = None
                                 # Handle numeric fields
-                                elif model_field in ('kd_case', 'kd_unit', 'kd_price_gram', 
-                                                    'wholesale_price', 'open_market_price', 
+                                elif model_field in ('kd_case', 'kd_unit', 'kd_price_gram',
+                                                    'wholesale_price', 'open_market_price',
                                                     'ng_price', 'small_supermarket_price'):
                                     if value:
                                         try:
@@ -208,13 +209,20 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                         except ValueError:
                                             # Skip invalid numeric values
                                             pass
+                                elif model_field == 'is_unilever':
+                                    if value:
+                                        data['is_unilever'] = value.strip().lower() in ('true', 'yes', '1')
                                 else:
                                     data[model_field] = value
-                        
+
                         # Normalize category/size/brand against allowed choices
                         if data.get('sku_category'):
                             cat = str(data['sku_category']).strip().upper()
-                            cat_syn = {'ORALS': 'ORAL CARE', 'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT'}
+                            cat_syn = {
+                                'ORALS': 'ORAL CARE', 'ORAL': 'ORAL CARE',
+                                'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT',
+                                'SKIN': 'SKIN CARE', 'SKINCARE': 'SKIN CARE',
+                            }
                             data['sku_category'] = cat_syn.get(cat, cat)
                         if data.get('sku_size'):
                             data['sku_size'] = str(data['sku_size']).strip().upper()
@@ -224,8 +232,12 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                             data['brand'] = brand_map.get(b, b)
                         # Set source to CSV (imports are treated as CSV source)
                         data['source'] = 'CSV'
-                        # Heuristic for Unilever product can be adjusted; default to False
-                        data['is_unilever'] = bool(data.get('is_unilever', False))
+                        # If not explicitly provided, derive is_unilever from the brand
+                        if 'is_unilever' not in data:
+                            brand_upper = str(data.get('brand') or '').upper()
+                            data['is_unilever'] = any(
+                                brand_upper.startswith(b) for (b, _) in CompetitorPrice.BRAND_CHOICES
+                            )
                         
                         # Create the record
                         serializer = self.get_serializer(data=data)
@@ -272,8 +284,9 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                     'Open Market Price': 'open_market_price',
                     'NG Price': 'ng_price',
                     'Small Supermarket Price': 'small_supermarket_price',
+                    'Is Unilever': 'is_unilever',
                 }
-                
+
                 # Read headers from the first row
                 headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
                 header_indices = {header: idx for idx, header in enumerate(headers)}
@@ -302,12 +315,19 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                                             data[model_field] = float(value.replace(',', ''))
                                         except Exception:
                                             pass
+                                elif model_field == 'is_unilever':
+                                    if value:
+                                        data['is_unilever'] = value.strip().lower() in ('true', 'yes', '1')
                                 else:
                                     data[model_field] = value
                         # Normalize category/size/brand
                         if data.get('sku_category'):
                             cat = str(data['sku_category']).strip().upper()
-                            cat_syn = {'ORALS': 'ORAL CARE', 'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT'}
+                            cat_syn = {
+                                'ORALS': 'ORAL CARE', 'ORAL': 'ORAL CARE',
+                                'DEOS': 'DEODORANT', 'DEODORANTS': 'DEODORANT',
+                                'SKIN': 'SKIN CARE', 'SKINCARE': 'SKIN CARE',
+                            }
                             data['sku_category'] = cat_syn.get(cat, cat)
                         if data.get('sku_size'):
                             data['sku_size'] = str(data['sku_size']).strip().upper()
@@ -317,7 +337,12 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
                             data['brand'] = brand_map.get(b, b)
                         # Treat EXCEL imports as CSV source to satisfy model choices
                         data['source'] = 'CSV'
-                        data['is_unilever'] = bool(data.get('is_unilever', False))
+                        # If not explicitly provided, derive is_unilever from the brand
+                        if 'is_unilever' not in data:
+                            brand_upper = str(data.get('brand') or '').upper()
+                            data['is_unilever'] = any(
+                                brand_upper.startswith(b) for (b, _) in CompetitorPrice.BRAND_CHOICES
+                            )
                         serializer = self.get_serializer(data=data)
                         if serializer.is_valid():
                             serializer.save()

@@ -51,10 +51,12 @@ class CompetitorPrice(models.Model):
         blank=True
     )
     
+    # Free text, not constrained to BRAND_CHOICES: this app tracks competitor
+    # brands too (Nivea, Colgate, Maggi, ...), not just Unilever's own. Whether
+    # a brand is Unilever's is captured separately by is_unilever below.
     brand = models.CharField(
         max_length=255,
         verbose_name='Brand',
-        choices=BRAND_CHOICES,
         blank=True,
         null=True
     )
