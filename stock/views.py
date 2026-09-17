@@ -1,6 +1,5 @@
 import csv
 import io
-import re
 from datetime import datetime, timedelta
 
 from django.db import transaction
@@ -242,74 +241,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {'message': f'Deleted {customer_count} customers and {stock_count} stock entries'},
             status=status.HTTP_200_OK,
         )
-
-    # One-off migration helper: a real store roster was bulk-uploaded before
-    # the Distributor model existed, so `location` on those rows holds the
-    # distributor's company name and the city is only recoverable from the
-    # customer_code prefix. TODO: remove this action once the one-time
-    # backfill on production has been run and verified.
-    _PREFIX_CITY_MAP = {
-        'TLA': 'LAGOS', 'TNW': 'NORTH WEST', 'TSE': 'SOUTH EAST',
-        'TSC': 'SOUTH SOUTH', 'TNE': 'NORTH EAST', 'TWE': 'WEST',
-    }
-    _CITY_ABBR = {
-        'LAGOS': 'LAG', 'NORTH WEST': 'NW', 'SOUTH EAST': 'SE',
-        'SOUTH SOUTH': 'SS', 'NORTH EAST': 'NE', 'WEST': 'WES',
-    }
-
-    @action(detail=False, methods=['post'])
-    def backfill_distributors(self, request):
-        """
-        For every Customer without a distributor, infer the distributor
-        from `location` (the company name) and the city from the
-        customer_code prefix, create the Distributor if it doesn't exist
-        yet, and link the store to it. Idempotent - safe to re-run.
-        """
-        error = _require_clear_confirmation(request)
-        if error:
-            return error
-
-        customers = Customer.objects.filter(distributor__isnull=True)
-        location_to_distributor = {}
-        created_distributors = 0
-        linked = 0
-        skipped = []
-
-        with transaction.atomic():
-            for customer in customers:
-                location = (customer.location or '').strip()
-                prefix_match = re.match(r'^([A-Za-z]+)', customer.customer_code)
-                prefix = prefix_match.group(1).upper() if prefix_match else ''
-                city = self._PREFIX_CITY_MAP.get(prefix)
-
-                if not location or not city:
-                    skipped.append(customer.customer_code)
-                    continue
-
-                distributor = location_to_distributor.get(location)
-                if distributor is None:
-                    distributor = Distributor.objects.filter(distributor_name=location).first()
-                if distributor is None:
-                    abbr = self._CITY_ABBR.get(city, city[:3].upper())
-                    seq = Distributor.objects.filter(distributor_code__startswith=abbr).count() + 1
-                    code = f"{abbr}{seq:02d}"
-                    while Distributor.objects.filter(distributor_code=code).exists():
-                        seq += 1
-                        code = f"{abbr}{seq:02d}"
-                    distributor = Distributor.objects.create(
-                        distributor_code=code, distributor_name=location, city=city,
-                    )
-                    created_distributors += 1
-                location_to_distributor[location] = distributor
-
-                customer.distributor = distributor
-                customer.save(update_fields=['distributor'])
-                linked += 1
-
-        return Response({
-            'message': f'Created {created_distributors} distributors, linked {linked} stores',
-            'skipped_customer_codes': skipped,
-        })
 
 
 class CustomerStockViewSet(viewsets.ModelViewSet):
