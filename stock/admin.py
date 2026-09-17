@@ -1,12 +1,20 @@
 from django.contrib import admin
-from .models import Customer, CustomerStockEntry
+from .models import Distributor, Customer, CustomerStockEntry
+
+
+@admin.register(Distributor)
+class DistributorAdmin(admin.ModelAdmin):
+    list_display = ['distributor_code', 'distributor_name', 'city', 'created_at']
+    search_fields = ['distributor_code', 'distributor_name', 'city']
+    readonly_fields = ['created_at', 'updated_at']
 
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['customer_code', 'customer_name', 'location', 'created_at']
+    list_display = ['customer_code', 'customer_name', 'location', 'distributor', 'created_at']
     search_fields = ['customer_code', 'customer_name', 'location']
     readonly_fields = ['created_at', 'updated_at']
+    autocomplete_fields = ['distributor']
 
 
 @admin.register(CustomerStockEntry)

@@ -13,8 +13,8 @@ from rest_framework.response import Response
 
 from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
 from competitors.csv_utils import decode_csv_bytes
-from .models import Customer, CustomerStockEntry
-from .serializers import CustomerSerializer, CustomerStockEntrySerializer
+from .models import Distributor, Customer, CustomerStockEntry
+from .serializers import DistributorSerializer, CustomerSerializer, CustomerStockEntrySerializer
 
 
 CONFIRM_PHRASE = 'DELETE ALL'
@@ -45,15 +45,110 @@ def _period_boundaries():
     return now, today_start, week_start, month_start, year_start
 
 
+class DistributorViewSet(viewsets.ModelViewSet):
+    """
+    Distributor master data: the business partner supplying a set of stores
+    within a city. Sits above Customer (the store) in the real hierarchy.
+    """
+    queryset = Distributor.objects.all()
+    serializer_class = DistributorSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['city']
+    search_fields = ['distributor_code', 'distributor_name', 'city']
+    ordering_fields = ['city', 'distributor_name', 'distributor_code', 'created_at']
+
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """Typeahead by code, name, or city."""
+        q = request.query_params.get('q', '').strip()
+        qs = self.get_queryset()
+        if q:
+            qs = qs.filter(Q(distributor_code__icontains=q) | Q(distributor_name__icontains=q) | Q(city__icontains=q))
+        rows = qs.values('distributor_code', 'distributor_name', 'city')[:50]
+        return Response(list(rows), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """
+        Bulk-load/refresh the distributor roster from a CSV with columns:
+        Distributor Code, Distributor Name, City. Upserts by Distributor
+        Code so re-uploading a refreshed roster is safe.
+        """
+        if 'file' not in request.FILES:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        if not file.name.endswith('.csv'):
+            return Response({"error": "File must be CSV format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            decoded_file = decode_csv_bytes(file.read())
+            reader = csv.DictReader(io.StringIO(decoded_file))
+        except Exception as e:
+            return Response({"error": f"Error reading CSV: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        headers = reader.fieldnames
+        if not headers or 'Distributor Code' not in headers:
+            return Response(
+                {"error": "CSV format is invalid - Distributor Code column not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created_count = 0
+        updated_count = 0
+        error_rows = []
+        for row_num, row in enumerate(reader, start=2):
+            code = (row.get('Distributor Code') or '').strip()
+            name = (row.get('Distributor Name') or '').strip()
+            city = (row.get('City') or '').strip()
+            if not code or not name:
+                error_rows.append({'row': row_num, 'errors': 'Distributor Code and Distributor Name are required'})
+                continue
+            try:
+                obj, was_created = Distributor.objects.update_or_create(
+                    distributor_code=code,
+                    defaults={'distributor_name': name, 'city': city},
+                )
+                created_count += 1 if was_created else 0
+                updated_count += 0 if was_created else 1
+            except Exception as e:
+                error_rows.append({'row': row_num, 'errors': str(e)})
+
+        return Response({
+            'message': f'Created {created_count}, updated {updated_count} distributors',
+            'errors': error_rows if error_rows else None,
+        }, status=status.HTTP_201_CREATED if (created_count or updated_count) else status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        """
+        Wipe the entire distributor roster - for recovering from a bad bulk
+        upload. Distributor rows are protected against deletion while stores
+        still reference them, so clearing distributors necessarily clears
+        all stores (and, transitively, their stock history) too.
+        """
+        error = _require_clear_confirmation(request)
+        if error:
+            return error
+        with transaction.atomic():
+            stock_count, _ = CustomerStockEntry.objects.all().delete()
+            customer_count, _ = Customer.objects.all().delete()
+            distributor_count, _ = Distributor.objects.all().delete()
+        return Response(
+            {'message': f'Deleted {distributor_count} distributors, {customer_count} stores, and {stock_count} stock entries'},
+            status=status.HTTP_200_OK,
+        )
+
+
 class CustomerViewSet(viewsets.ModelViewSet):
     """
     Store/customer master data: loaded up front by an admin (one at a time
     or via CSV bulk upload), then selected - not typed - by salesmen.
     """
-    queryset = Customer.objects.all()
+    queryset = Customer.objects.select_related('distributor').all()
     serializer_class = CustomerSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['location']
+    filterset_fields = ['location', 'distributor']
     search_fields = ['customer_code', 'customer_name', 'location']
     ordering_fields = ['customer_name', 'customer_code', 'created_at']
 
@@ -71,8 +166,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
     def upload(self, request):
         """
         Bulk-load/refresh the store roster from a CSV with columns:
-        Customer Code, Customer Name, Location. Upserts by Customer Code so
-        re-uploading a refreshed roster is safe.
+        Customer Code, Customer Name, Location, Distributor Code. Upserts by
+        Customer Code so re-uploading a refreshed roster is safe. The
+        distributor must already exist (add distributors first).
         """
         if 'file' not in request.FILES:
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
@@ -101,13 +197,21 @@ class CustomerViewSet(viewsets.ModelViewSet):
             code = (row.get('Customer Code') or '').strip()
             name = (row.get('Customer Name') or '').strip()
             location = (row.get('Location') or '').strip()
+            distributor_code = (row.get('Distributor Code') or '').strip()
             if not code or not name:
                 error_rows.append({'row': row_num, 'errors': 'Customer Code and Customer Name are required'})
                 continue
+            distributor = None
+            if distributor_code:
+                try:
+                    distributor = Distributor.objects.get(distributor_code=distributor_code)
+                except Distributor.DoesNotExist:
+                    error_rows.append({'row': row_num, 'errors': f'No distributor with code "{distributor_code}" - add it first'})
+                    continue
             try:
                 obj, was_created = Customer.objects.update_or_create(
                     customer_code=code,
-                    defaults={'customer_name': name, 'location': location},
+                    defaults={'customer_name': name, 'location': location, 'distributor': distributor},
                 )
                 created_count += 1 if was_created else 0
                 updated_count += 0 if was_created else 1
@@ -155,6 +259,39 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
             'brands': dict(BRAND_CHOICES),
         })
 
+    @action(detail=False, methods=['get'])
+    def current_stock(self, request):
+        """
+        Latest known entry per product at one store - what the salesman's
+        POS screen shows before they enter anything, so they see what's
+        already there instead of blind-guessing a starting stock every visit.
+        """
+        customer_code = request.query_params.get('customer_code')
+        if not customer_code:
+            return Response({"error": "customer_code is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        entries = (
+            CustomerStockEntry.objects
+            .filter(customer__customer_code=customer_code)
+            .order_by('-created_at')
+        )
+        latest_by_product = {}
+        for e in entries:
+            key = (e.sku_name, e.brand)
+            if key not in latest_by_product:
+                latest_by_product[key] = e
+
+        results = [{
+            'sku_name': e.sku_name,
+            'brand': e.brand,
+            'sku_category': e.sku_category,
+            'sku_size': e.sku_size,
+            'is_unilever': e.is_unilever,
+            'current_stock': e.current_stock,
+            'last_updated': e.created_at,
+        } for e in latest_by_product.values()]
+        return Response(results, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'])
     def submit_visit(self, request):
         """
@@ -176,9 +313,13 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
         customer_code = data.get('customer_code')
         items = data.get('items')
 
+        try:
+            customer = Customer.objects.get(customer_code=customer_code) if customer_code else None
+        except Customer.DoesNotExist:
+            customer = None
         if not customer_code:
             return Response({"error": "customer_code is required"}, status=status.HTTP_400_BAD_REQUEST)
-        if not Customer.objects.filter(customer_code=customer_code).exists():
+        if not customer:
             return Response(
                 {"error": f'No customer with code "{customer_code}". Ask an admin to add it first.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -192,6 +333,21 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             for index, item in enumerate(items):
                 entry_data = {**item, 'customer_code': customer_code, 'source': 'FORM'}
+
+                # Running ledger: if the caller only sent sales_in (the normal
+                # case once the salesman is looking at current_stock() output
+                # instead of blind-guessing it), compute the new total from
+                # the last known stock for this exact product at this store.
+                if entry_data.get('current_stock') is None and entry_data.get('sales_in') is not None:
+                    previous = (
+                        CustomerStockEntry.objects
+                        .filter(customer=customer, sku_name=entry_data.get('sku_name'), brand=entry_data.get('brand'))
+                        .order_by('-created_at')
+                        .first()
+                    )
+                    previous_stock = previous.current_stock if previous and previous.current_stock else 0
+                    entry_data['current_stock'] = previous_stock + int(entry_data['sales_in'])
+
                 serializer = self.get_serializer(data=entry_data)
                 if serializer.is_valid():
                     serializer.save()

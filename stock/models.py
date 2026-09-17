@@ -2,6 +2,27 @@ from django.db import models
 from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES
 
 
+class Distributor(models.Model):
+    """
+    Master data for a distributor - the business partner who supplies a set
+    of stores within a city. Sits above Customer (the store) in the real
+    business hierarchy: City -> Distributor -> Store.
+    """
+
+    distributor_code = models.CharField(max_length=50, unique=True, verbose_name='Distributor Code')
+    distributor_name = models.CharField(max_length=255, verbose_name='Distributor Name')
+    city = models.CharField(max_length=100, verbose_name='City')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['city', 'distributor_name']
+
+    def __str__(self):
+        return f"{self.distributor_code} - {self.distributor_name} ({self.city})"
+
+
 class Customer(models.Model):
     """
     Master data for a store/customer a salesman visits. Loaded up front by
@@ -12,6 +33,10 @@ class Customer(models.Model):
     customer_code = models.CharField(max_length=50, unique=True, verbose_name='Customer Code')
     customer_name = models.CharField(max_length=255, verbose_name='Customer Name')
     location = models.CharField(max_length=255, verbose_name='Location')
+    distributor = models.ForeignKey(
+        Distributor, on_delete=models.PROTECT, related_name='stores',
+        verbose_name='Distributor', null=True, blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
