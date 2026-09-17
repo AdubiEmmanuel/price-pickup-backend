@@ -260,6 +260,34 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    def distinct_skus(self, request):
+        """
+        Every distinct SKU already recorded across any store - populates the
+        Category -> Brand -> SKU -> Size picker when a salesman logs a
+        product that's new to THIS store but already tracked elsewhere,
+        instead of having them retype its attributes freehand.
+
+        Deduplicates by (sku_name, brand, sku_category, sku_size) only -
+        is_unilever is taken from that combo's most recent entry rather than
+        included in the distinct key, so an inconsistent older is_unilever
+        value on the same SKU can't produce a duplicate catalog row.
+        """
+        entries = (
+            CustomerStockEntry.objects
+            .order_by('-created_at')
+            .values('sku_name', 'brand', 'sku_category', 'sku_size', 'is_unilever')
+        )
+        seen = set()
+        results = []
+        for e in entries:
+            key = (e['sku_name'], e['brand'], e['sku_category'], e['sku_size'])
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(e)
+        return Response(results, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
     def current_stock(self, request):
         """
         Latest known entry per product at one store - what the salesman's
