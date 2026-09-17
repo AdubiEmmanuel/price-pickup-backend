@@ -147,10 +147,13 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
         Update this SKU's own Case or Unit price (kd_case/kd_unit) - the
         price a salesman records when picking up prices on an existing SKU,
         as opposed to the separate per-market observed prices above.
-        Accepts: price_type ('case'|'unit') and price (number).
+        Accepts: price_type ('case'|'unit'), price (number), and optionally
+        units_per_case (int) - when given, the serializer computes and saves
+        the other price too instead of leaving it blank.
         """
         price_type = request.data.get('price_type')
         price = request.data.get('price')
+        units_per_case = request.data.get('units_per_case')
         if price_type is None or price is None:
             return Response({"error": "price_type and price are required"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -164,6 +167,15 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
             return Response({"error": "price must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
         partial_data = {mapping[price_type]: price_val}
+
+        if units_per_case is not None:
+            try:
+                units_per_case_val = int(units_per_case)
+                if units_per_case_val <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({"error": "units_per_case must be a positive integer"}, status=status.HTTP_400_BAD_REQUEST)
+            partial_data['units_per_case'] = units_per_case_val
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=partial_data, partial=True)
         serializer.is_valid(raise_exception=True)

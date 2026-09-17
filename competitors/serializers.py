@@ -1,3 +1,4 @@
+from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import serializers
 from .models import CompetitorPrice
 
@@ -12,6 +13,7 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
             'brand',
             'kd_case',
             'kd_unit',
+            'units_per_case',
             'kd_price_gram',
             'wholesale_price',
             'open_market_price',
@@ -52,7 +54,38 @@ class CompetitorPriceSerializer(serializers.ModelSerializer):
                 if not data.get(field):
                     raise serializers.ValidationError(f"{field.replace('_', ' ').title()} is required for new SKU creation")
 
+        self._apply_case_unit_calculation(data)
         return data
+
+    def _apply_case_unit_calculation(self, data):
+        """
+        If units_per_case is known (from this request or already stored) and
+        only one of kd_case/kd_unit was actually sent, compute the other one
+        - never require both when the salesman only knows one.
+        """
+        units_per_case = data.get('units_per_case', getattr(self.instance, 'units_per_case', None))
+        if not units_per_case:
+            return
+
+        def round2(value):
+            return Decimal(value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        case_given = data.get('kd_case') is not None
+        unit_given = data.get('kd_unit') is not None
+        existing_case = getattr(self.instance, 'kd_case', None)
+        existing_unit = getattr(self.instance, 'kd_unit', None)
+
+        if unit_given and not case_given:
+            data['kd_case'] = round2(Decimal(data['kd_unit']) * units_per_case)
+        elif case_given and not unit_given:
+            data['kd_unit'] = round2(Decimal(data['kd_case']) / units_per_case)
+        elif not case_given and not unit_given and 'units_per_case' in data:
+            # units_per_case supplied on its own (e.g. added after the fact) -
+            # backfill whichever side is still missing from the stored price.
+            if existing_unit is not None and existing_case is None:
+                data['kd_case'] = round2(Decimal(existing_unit) * units_per_case)
+            elif existing_case is not None and existing_unit is None:
+                data['kd_unit'] = round2(Decimal(existing_case) / units_per_case)
 
     def update(self, instance, validated_data):
         """

@@ -79,13 +79,21 @@ class CompetitorPrice(models.Model):
     )
     
     kd_price_gram = models.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
         verbose_name='KD Price/Gram',
         null=True,
         blank=True
     )
-    
+
+    # How many units make up one case for this SKU - lets whichever of
+    # kd_case/kd_unit is entered be used to compute the other one.
+    units_per_case = models.PositiveIntegerField(
+        verbose_name='Units per Case',
+        null=True,
+        blank=True
+    )
+
     # Market prices
     wholesale_price = models.DecimalField(
         max_digits=10, 
