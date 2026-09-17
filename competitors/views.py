@@ -8,6 +8,9 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import CompetitorPrice
 from .serializers import CompetitorPriceSerializer
 
+CONFIRM_PHRASE = 'DELETE ALL'
+
+
 class CompetitorPriceViewSet(viewsets.ModelViewSet):
     queryset = CompetitorPrice.objects.all()
     serializer_class = CompetitorPriceSerializer
@@ -15,6 +18,21 @@ class CompetitorPriceViewSet(viewsets.ModelViewSet):
     filterset_fields = ['sku_category', 'sku_size', 'brand', 'is_unilever', 'location']
     search_fields = ['sku_name', 'brand']
     ordering_fields = ['created_at', 'sku_name', 'kd_case', 'kd_unit']
+
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        """
+        Wipe all price records - for recovering from a bad bulk upload.
+        Requires {"confirm": "DELETE ALL"} in the body so this irreversible
+        action can't be triggered by an accidental click or stray request.
+        """
+        if request.data.get('confirm') != CONFIRM_PHRASE:
+            return Response(
+                {"error": f'Send {{"confirm": "{CONFIRM_PHRASE}"}} to confirm this irreversible action.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        count, _ = CompetitorPrice.objects.all().delete()
+        return Response({'message': f'Deleted {count} price records'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def get_category_choices(self, request):

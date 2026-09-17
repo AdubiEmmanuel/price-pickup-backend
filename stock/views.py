@@ -16,6 +16,24 @@ from .models import Customer, CustomerStockEntry
 from .serializers import CustomerSerializer, CustomerStockEntrySerializer
 
 
+CONFIRM_PHRASE = 'DELETE ALL'
+
+
+def _require_clear_confirmation(request):
+    """
+    Shared guard for every destructive `clear` action: require the exact
+    phrase in the body so a bulk-delete can't be triggered by an accidental
+    click or a stray automated request. Returns an error Response, or None
+    if the caller may proceed.
+    """
+    if request.data.get('confirm') != CONFIRM_PHRASE:
+        return Response(
+            {"error": f'Send {{"confirm": "{CONFIRM_PHRASE}"}} to confirm this irreversible action.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
 def _period_boundaries():
     """Today/week/month/year start boundaries (server-local via Django's active timezone)."""
     now = timezone.now()
@@ -100,6 +118,25 @@ class CustomerViewSet(viewsets.ModelViewSet):
             'errors': error_rows if error_rows else None,
         }, status=status.HTTP_201_CREATED if (created_count or updated_count) else status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        """
+        Wipe the entire store roster - for recovering from a bad bulk upload.
+        Customer rows are protected against deletion while stock entries
+        still reference them, so clearing customers necessarily clears all
+        stock history too; the confirmation message says so up front.
+        """
+        error = _require_clear_confirmation(request)
+        if error:
+            return error
+        with transaction.atomic():
+            stock_count, _ = CustomerStockEntry.objects.all().delete()
+            customer_count, _ = Customer.objects.all().delete()
+        return Response(
+            {'message': f'Deleted {customer_count} customers and {stock_count} stock entries'},
+            status=status.HTTP_200_OK,
+        )
+
 
 class CustomerStockViewSet(viewsets.ModelViewSet):
     queryset = CustomerStockEntry.objects.select_related('customer').all()
@@ -163,6 +200,19 @@ class CustomerStockViewSet(viewsets.ModelViewSet):
 
         response_status = status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST
         return Response({'created': created, 'errors': errors}, status=response_status)
+
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        """
+        Wipe all recorded stock/sales-in visits - for recovering from bad
+        salesman input or a bad bulk import - without touching the customer
+        roster itself.
+        """
+        error = _require_clear_confirmation(request)
+        if error:
+            return error
+        count, _ = CustomerStockEntry.objects.all().delete()
+        return Response({'message': f'Deleted {count} stock entries'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def dashboard_summary(self, request):
