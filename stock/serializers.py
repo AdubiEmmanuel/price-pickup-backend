@@ -31,6 +31,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             'customer_code',
             'customer_name',
             'location',
+            'phone_number',
+            'store_image',
             'distributor_code',
             'distributor_name',
             'city',
@@ -46,6 +48,14 @@ class CustomerSerializer(serializers.ModelSerializer):
             return Distributor.objects.get(distributor_code=value)
         except Distributor.DoesNotExist:
             raise serializers.ValidationError(f'No distributor with code "{value}". Add it first.')
+
+    def validate_store_image(self, value):
+        # A data: URI, client-compressed before upload. Cap it well above the
+        # expected size (a few hundred KB) so a stray full-resolution photo
+        # can't bloat the database.
+        if value and len(value) > 2_000_000:
+            raise serializers.ValidationError('Image is too large - please use a smaller photo.')
+        return value
 
     def validate(self, data):
         if not self.instance and not data.get('distributor_code'):

@@ -1,5 +1,6 @@
 import csv
 import io
+import secrets
 from datetime import datetime, timedelta
 
 from django.db import transaction
@@ -13,6 +14,8 @@ from rest_framework.response import Response
 
 from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
 from competitors.csv_utils import decode_csv_bytes
+from competitors.models import CompetitorPrice
+from competitors.serializers import CompetitorPriceSerializer
 from .models import Distributor, Customer, CustomerStockEntry
 from .serializers import DistributorSerializer, CustomerSerializer, CustomerStockEntrySerializer
 
@@ -241,6 +244,138 @@ class CustomerViewSet(viewsets.ModelViewSet):
             {'message': f'Deleted {customer_count} customers and {stock_count} stock entries'},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=['post'])
+    def quick_create(self, request):
+        """
+        One-call "Create New Store" flow for a salesman who finds a new
+        store in the field: creates the store (auto-generating its code),
+        then for each product logs its opening stock and/or saves its
+        Case/Unit price - all in a single request instead of separate trips
+        through the Customers, Customer Stock, and Price Pickup screens.
+
+        Expected payload:
+        {
+            "distributor_code": "LAG01",
+            "customer_name": "Mama Ngozi Stores",
+            "phone_number": "08012345678",       (optional)
+            "location": "Ikeja, Lagos",           (optional)
+            "store_image": "data:image/jpeg;...", (optional, see Customer.store_image)
+            "products": [
+                {"sku_category": "NUTRITION", "brand": "KNORR", "sku_name": "Royco Mandara",
+                 "sku_size": "REGULAR PACK", "is_unilever": true,
+                 "current_stock": 20, "sales_in": 20,
+                 "kd_case": 15000, "kd_unit": null, "units_per_case": 24},  (price fields optional)
+                ...
+            ]
+        }
+        """
+        data = request.data
+        distributor_code = data.get('distributor_code')
+        customer_name = (data.get('customer_name') or '').strip()
+        if not distributor_code or not customer_name:
+            return Response({'error': 'distributor_code and customer_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            distributor = Distributor.objects.get(distributor_code=distributor_code)
+        except Distributor.DoesNotExist:
+            return Response({'error': f'No distributor with code "{distributor_code}"'}, status=status.HTTP_400_BAD_REQUEST)
+
+        store_image = data.get('store_image') or None
+        if store_image and len(store_image) > 2_000_000:
+            return Response({'error': 'Image is too large - please use a smaller photo.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        products = data.get('products') or []
+        if not isinstance(products, list):
+            return Response({'error': 'products must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Auto-generate a unique customer_code - a salesman creating a store
+        # on the spot has no ERP code to give it.
+        customer_code = None
+        for _ in range(10):
+            candidate = f"{distributor.distributor_code}-{secrets.token_hex(3).upper()}"
+            if not Customer.objects.filter(customer_code=candidate).exists():
+                customer_code = candidate
+                break
+        if not customer_code:
+            return Response({'error': 'Could not generate a unique store code - please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        customer = Customer.objects.create(
+            customer_code=customer_code,
+            customer_name=customer_name,
+            location=data.get('location') or '',
+            phone_number=data.get('phone_number') or None,
+            store_image=store_image,
+            distributor=distributor,
+        )
+
+        stock_created = 0
+        prices_saved = 0
+        errors = []
+
+        for index, item in enumerate(products):
+            sku_name = (item.get('sku_name') or '').strip()
+            sku_category = item.get('sku_category')
+            brand = item.get('brand') or None
+            if not sku_name or not sku_category:
+                errors.append({'index': index, 'error': 'sku_name and sku_category are required'})
+                continue
+
+            entry_serializer = CustomerStockEntrySerializer(data={
+                'customer_code': customer_code,
+                'sku_category': sku_category,
+                'sku_size': item.get('sku_size'),
+                'brand': brand,
+                'sku_name': sku_name,
+                'current_stock': item.get('current_stock'),
+                'sales_in': item.get('sales_in'),
+                'is_unilever': item.get('is_unilever', False),
+                'source': 'FORM',
+            })
+            if entry_serializer.is_valid():
+                entry_serializer.save()
+                stock_created += 1
+            else:
+                errors.append({'index': index, 'error': entry_serializer.errors})
+                continue
+
+            # Price is optional - only touch the catalog when at least one
+            # price field was actually supplied for this product.
+            kd_case = item.get('kd_case')
+            kd_unit = item.get('kd_unit')
+            units_per_case = item.get('units_per_case')
+            if kd_case is None and kd_unit is None and units_per_case is None:
+                continue
+
+            price_data = {k: v for k, v in {
+                'kd_case': kd_case, 'kd_unit': kd_unit, 'units_per_case': units_per_case,
+            }.items() if v is not None}
+
+            existing_price = (
+                CompetitorPrice.objects.filter(sku_name=sku_name, brand=brand)
+                .order_by('-created_at').first()
+            )
+            if existing_price:
+                price_serializer = CompetitorPriceSerializer(existing_price, data=price_data, partial=True)
+            else:
+                price_data.update({
+                    'sku_name': sku_name, 'brand': brand, 'sku_category': sku_category,
+                    'sku_size': item.get('sku_size'), 'is_unilever': item.get('is_unilever', False),
+                    'source': 'FORM',
+                })
+                price_serializer = CompetitorPriceSerializer(data=price_data)
+
+            if price_serializer.is_valid():
+                price_serializer.save()
+                prices_saved += 1
+            else:
+                errors.append({'index': index, 'error': price_serializer.errors})
+
+        return Response({
+            'customer': CustomerSerializer(customer).data,
+            'stock_entries_created': stock_created,
+            'prices_saved': prices_saved,
+            'errors': errors,
+        }, status=status.HTTP_201_CREATED)
 
 
 class CustomerStockViewSet(viewsets.ModelViewSet):

@@ -37,6 +37,11 @@ class Customer(models.Model):
         Distributor, on_delete=models.PROTECT, related_name='stores',
         verbose_name='Distributor', null=True, blank=True,
     )
+    phone_number = models.CharField(max_length=30, verbose_name='Phone Number', null=True, blank=True)
+    # A small compressed photo (resized/compressed client-side before upload)
+    # stored as a base64 data URI - the backend has no persistent disk or
+    # object storage configured, so this avoids losing files on every deploy.
+    store_image = models.TextField(verbose_name='Store Image', null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
