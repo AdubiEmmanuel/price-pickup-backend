@@ -11,7 +11,8 @@ class DistributorAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['customer_code', 'customer_name', 'location', 'phone_number', 'distributor', 'created_at']
+    list_display = ['customer_code', 'customer_name', 'location', 'phone_number', 'channel', 'distributor', 'created_at']
+    list_filter = ['channel']
     search_fields = ['customer_code', 'customer_name', 'location', 'phone_number']
     readonly_fields = ['created_at', 'updated_at']
     autocomplete_fields = ['distributor']

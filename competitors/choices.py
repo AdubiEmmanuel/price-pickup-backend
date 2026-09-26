@@ -29,3 +29,13 @@ BRAND_CHOICES = [
     ('ROYCO', 'ROYCO'),
     ('REXONA', 'REXONA'),
 ]
+
+# The retail channel/market a price was picked up in, or a store belongs to -
+# shared so a store's own channel (stock/models.py Customer.channel) lines up
+# with the same taxonomy used when picking up its prices.
+MARKET_CHANNEL_CHOICES = [
+    ('OPEN_MARKET', 'Open Market'),
+    ('NG', 'NG Market'),
+    ('SMALL_SUPERMARKET', 'Small Supermarket'),
+    ('WHOLESALE', 'Wholesale'),
+]

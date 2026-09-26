@@ -1,5 +1,5 @@
 from django.db import models
-from .choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
+from .choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES, MARKET_CHANNEL_CHOICES
 
 class CompetitorPrice(models.Model):
     SOURCE_CHOICES = [
@@ -11,13 +11,7 @@ class CompetitorPrice(models.Model):
     SKU_CATEGORY_CHOICES = SKU_CATEGORY_CHOICES
     SKU_SIZE_CHOICES = SKU_SIZE_CHOICES
     BRAND_CHOICES = BRAND_CHOICES
-
-    MARKET_CHOICES = [
-        ('OPEN_MARKET', 'Open Market'),
-        ('NG', 'NG Market'),
-        ('SMALL_SUPERMARKET', 'Small Supermarket'),
-        ('WHOLESALE', 'Wholesale'),
-    ]
+    MARKET_CHOICES = MARKET_CHANNEL_CHOICES
 
     # Basic SKU information
     sku_code = models.CharField(

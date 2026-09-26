@@ -1,5 +1,5 @@
 from django.db import models
-from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES
+from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, MARKET_CHANNEL_CHOICES
 
 
 class Distributor(models.Model):
@@ -42,6 +42,13 @@ class Customer(models.Model):
     # stored as a base64 data URI - the backend has no persistent disk or
     # object storage configured, so this avoids losing files on every deploy.
     store_image = models.TextField(verbose_name='Store Image', null=True, blank=True)
+    # The retail channel/market this store trades in - same taxonomy as a
+    # price pickup's market_type, so a store's channel and its price
+    # observations line up.
+    channel = models.CharField(
+        max_length=50, choices=MARKET_CHANNEL_CHOICES,
+        verbose_name='Channel/Market', null=True, blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

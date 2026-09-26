@@ -12,7 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
-from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES
+from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, BRAND_CHOICES, MARKET_CHANNEL_CHOICES
 from competitors.csv_utils import decode_csv_bytes
 from competitors.models import CompetitorPrice
 from competitors.serializers import CompetitorPriceSerializer
@@ -201,8 +201,13 @@ class CustomerViewSet(viewsets.ModelViewSet):
             name = (row.get('Customer Name') or '').strip()
             location = (row.get('Location') or '').strip()
             distributor_code = (row.get('Distributor Code') or '').strip()
+            channel = (row.get('Channel') or '').strip() or None
             if not code or not name:
                 error_rows.append({'row': row_num, 'errors': 'Customer Code and Customer Name are required'})
+                continue
+            if channel and channel not in dict(MARKET_CHANNEL_CHOICES):
+                valid = ', '.join(dict(MARKET_CHANNEL_CHOICES).keys())
+                error_rows.append({'row': row_num, 'errors': f'Invalid Channel "{channel}". Must be one of: {valid}'})
                 continue
             distributor = None
             if distributor_code:
@@ -211,10 +216,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 except Distributor.DoesNotExist:
                     error_rows.append({'row': row_num, 'errors': f'No distributor with code "{distributor_code}" - add it first'})
                     continue
+            defaults = {'customer_name': name, 'location': location, 'distributor': distributor}
+            if channel:
+                # Only set when the CSV actually has a value - a re-upload of
+                # a roster without a Channel column shouldn't blank out a
+                # channel already set some other way.
+                defaults['channel'] = channel
             try:
                 obj, was_created = Customer.objects.update_or_create(
                     customer_code=code,
-                    defaults={'customer_name': name, 'location': location, 'distributor': distributor},
+                    defaults=defaults,
                 )
                 created_count += 1 if was_created else 0
                 updated_count += 0 if was_created else 1
@@ -260,6 +271,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             "customer_name": "Mama Ngozi Stores",
             "phone_number": "08012345678",       (optional)
             "location": "Ikeja, Lagos",           (optional)
+            "channel": "OPEN_MARKET",             (optional - one of Customer.channel's choices)
             "store_image": "data:image/jpeg;...", (optional, see Customer.store_image)
             "products": [
                 {"sku_category": "NUTRITION", "brand": "KNORR", "sku_name": "Royco Mandara",
@@ -279,6 +291,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
             distributor = Distributor.objects.get(distributor_code=distributor_code)
         except Distributor.DoesNotExist:
             return Response({'error': f'No distributor with code "{distributor_code}"'}, status=status.HTTP_400_BAD_REQUEST)
+
+        channel = data.get('channel') or None
+        if channel and channel not in dict(MARKET_CHANNEL_CHOICES):
+            valid = ', '.join(dict(MARKET_CHANNEL_CHOICES).keys())
+            return Response({'error': f'Invalid channel "{channel}". Must be one of: {valid}'}, status=status.HTTP_400_BAD_REQUEST)
 
         store_image = data.get('store_image') or None
         if store_image and len(store_image) > 2_000_000:
@@ -305,6 +322,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             location=data.get('location') or '',
             phone_number=data.get('phone_number') or None,
             store_image=store_image,
+            channel=channel,
             distributor=distributor,
         )
 

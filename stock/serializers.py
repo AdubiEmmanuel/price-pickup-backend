@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES
+from competitors.choices import SKU_CATEGORY_CHOICES, SKU_SIZE_CHOICES, MARKET_CHANNEL_CHOICES
 from .models import Distributor, Customer, CustomerStockEntry
 
 
@@ -33,6 +33,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             'location',
             'phone_number',
             'store_image',
+            'channel',
             'distributor_code',
             'distributor_name',
             'city',
